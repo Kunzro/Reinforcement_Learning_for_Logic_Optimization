@@ -1,0 +1,34 @@
+# path of the design verilog file
+circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/circuits/adder.v
+circuit_name: adder
+
+# target delay of the circuit
+target_delay: 2000
+
+# standard cell library mapping
+library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/code/asap7.lib
+
+# available optimizaction actions
+optimizations:
+  mig:
+    - rewrite
+    - rewrite -udc
+    - rewrite -azg
+    - rewrite -udc -azg
+    - balance
+    - balance -c
+  aig:
+    - rewrite
+    - rewrite -z
+    - refactor
+    - refactor -z
+    - resub
+    - resub -z
+    - balance
+
+# agent training parameters
+episodes: 5
+iterations: 10
+delay_reward_factor: 1
+MAX_STEPS: 50
+model_dir: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/model/_rllib/adder/model.ckpt   # must be absolute path
