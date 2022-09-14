@@ -78,9 +78,9 @@ class Aig_Env(Env):
         return area_reward + self.delay_reward_factor * delay_reward
 
 
-    def reset(self, seed = None, options=None):
+    def reset(self):
         """reset the state of Abc by simply reloading the original circuit"""
-        super().reset(seed=seed)
+        #super().reset(seed=seed)
 
         self.episode = 0   
         self.step_num = 0
@@ -127,3 +127,8 @@ if __name__ == "__main__":
     env = Aig_Env(env_config=env_config)
     env.reset()
     check_env(env=env)
+    env = Aig_Env(env_config=env_config)
+    env.reset()
+    for i in range(51):
+        res = env.step(env.action_space.sample())
+        print(res[2])
