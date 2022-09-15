@@ -10,11 +10,48 @@ from abc_ctypes import Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNumNodesAndLev
 class Aig_Env(Env):
     metadata = {"render_modes": []}
 
+
+    def get_best_known_delays(env):
+        return [env.best_known_delay, env.area_at_best_known_delay, env.reward_at_best_known_delay, env.best_known_trajectory_delay]
+
+    def get_best_known_rewards(env):
+        return [env.best_known_accumulated_reward, env.area_at_best_known_reward, env.delay_at_best_known_reward, env.best_known_trajectory_reward]
+
+    def get_best_known_area(trainer):
+
+        def get_area_stats(env):
+            return [env.best_known_area, env.delay_at_best_known_area, env.reward_at_best_known_area, env.best_known_trajectory_area]
+
+        area_stats = trainer.workers.foreach_env(get_area_stats)
+        area_stats = [result for result in area_stats if result != []]  # remove empty list from local worker that has potentially no env
+        best_known_areas = [stat[0] for worker_stats in area_stats for stat in worker_stats]
+        delays_at_best_known_areas = [stat[1] for worker_stats in area_stats for stat in worker_stats]
+        rewards_at_best_known_areas = [stat[2] for worker_stats in area_stats for stat in worker_stats]
+        best_known_trajectories_delays = [stat[3] for worker_stats in area_stats for stat in worker_stats]
+        best_known_area_arg = np.argmin(best_known_areas)
+        stats = {
+            'best_known_area': best_known_areas[best_known_area_arg],
+            'delay_at_best_known_area': delays_at_best_known_areas[best_known_area_arg],
+            'reward_at_best_known_area': rewards_at_best_known_areas[best_known_area_arg],
+            'best_known_trajectory_area': best_known_trajectories_delays[best_known_area_arg],
+        }
+        return stats
+
     def __init__(self, env_config) -> None:
         self.env_config = env_config
         self.delay_reward_factor = env_config["delay_reward_factor"]
         self.target_delay = env_config["target_delay"]
         self.MAX_STEPS = self.env_config["MAX_STEPS"]
+        self.max_episode_steps = self.env_config["MAX_STEPS"]
+
+        # keep trac of the history and best episode/trajectory
+        self.best_known_area = float('inf')
+        self.best_known_delay = float('inf')
+        self.best_known_accumulated_reward = float('-inf')
+        self.best_known_trajectory_reward = []
+        self.best_known_trajectory_area = []
+        self.best_known_trajectory_delay = []
+        self.current_trajectory = []
 
         # initialize variables to be used to get metrices from ABC
         self.c_delay = c_float()
@@ -80,11 +117,11 @@ class Aig_Env(Env):
 
     def reset(self):
         """reset the state of Abc by simply reloading the original circuit"""
-        #super().reset(seed=seed)
-
         self.episode = 0   
         self.step_num = 0
         self.done = False
+        self.accumulated_reward = 0
+        self.current_trajectory = []
 
         # load the circuit and get the initial observation
         Cmd_CommandExecute(self.pAbc, ('read ' + self.env_config["circuit_file"]).encode('UTF-8'))               # load circuit
@@ -113,6 +150,27 @@ class Aig_Env(Env):
         obs = self._get_obs()
         info = self._get_info()
         reward = self._get_reward()
+
+        # keep track of best results
+        self.accumulated_reward += reward
+        self.current_trajectory.append(self.env_config['optimizations']['aig'][action])
+        if self.area < self.best_known_area:
+            self.best_known_area = self.area
+            self.delay_at_best_known_area = self.delay
+            self.reward_at_best_known_area = self.accumulated_reward
+            self.best_known_trajectory_area = self.current_trajectory.copy()
+
+        if self.delay < self.best_known_delay:
+            self.best_known_delay = self.delay
+            self.area_at_best_known_delay = self.delay
+            self.reward_at_best_known_delay = self.accumulated_reward
+            self.best_known_trajectory_delay = self.current_trajectory.copy()
+
+        if self.best_known_accumulated_reward < self.accumulated_reward:
+            self.best_known_accumulated_reward = self.accumulated_reward
+            self.area_at_best_known_reward = self.area
+            self.delay_at_best_known_reward = self.delay
+            self.best_known_trajectory_reward = self.current_trajectory.copy()
 
         return obs, reward, self.done, info
 
