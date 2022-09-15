@@ -1,0 +1,129 @@
+drills:
+  adder:
+    area: 892.53
+    delay: 1897.05
+  bar:
+    area: 1400.85
+    delay: 775.18
+  log2:
+    area: 17879.51
+    delay: 7438.65
+  max:
+    area: 1008.00
+    delay: 3764.34
+  mult:
+    area: 17135.58
+    delay: 3998.84
+  sine:
+    area: 3030.07
+    delay: 3796.02
+  sqrt:
+    area: 8978.95
+    delay: 168539.27
+  square:
+    area: 12598.29
+    delay: 2180.41
+
+majoritydrills_aig:
+  adder:
+    area: 728.07
+    delay: 1658.10
+  bar:
+    area: 1199.06
+    delay: 795.22
+  log2:
+    area: 18023.45
+    delay: 7452.34
+  max:
+    area: 1048.59
+    delay: 3598.47
+  mult:
+    area: 15881.24
+    delay: 3877.19
+  sine:
+    area: 3129.22
+    delay: 3791.24
+  sqrt:
+    area: 8856.01
+    delay: 169679.61
+  square:
+    area: 12041.21
+    delay: 2352.39
+
+majoritydrills_mig:
+  adder:
+    area: 1056.99
+    delay: 1808.33
+  bar:
+    area: 1583.27
+    delay: 795.27
+  log2:
+    area: 16671.36
+    delay: 7977.06
+  max:
+    area: 1215.39
+    delay: 3777.65
+  mult:
+    area: 21430.27
+    delay: 4088.75
+  sine:
+    area: 3125.95
+    delay: 3815.96
+  sqrt:
+    area: 7542.41
+    delay: 164505.62
+  square:
+    area: 11198.37
+    delay: 2063.66
+
+bruteforce_aig:
+  adder:
+    area: 756.29
+    delay: 1767.66
+  bar:
+    area: 779.86
+    delay: 751.38
+  log2:
+    area: 18714.65
+    delay: 7161.59
+  max:
+    area: 1087.55
+    delay: 3921.30
+  mult:
+    area: 15840.88
+    delay: 3986.26
+  sine:
+    area: 3189.64
+    delay: 3736.85
+  sqrt:
+    area: 9416.35
+    delay: 164317.20
+  square:
+    area: 11043.48
+    delay: 2189.36
+
+bruteforce_mig:
+  adder:
+    area: 996.81
+    delay: 1849.38
+  bar:
+    area: 1583.27
+    delay: 795.27
+  log2:
+    area: 16671.36
+    delay: 7977.06
+  max:
+    area: 1197.43
+    delay: 3995.20
+  mult:
+    area: 20873.20
+    delay: 3939.57
+  sine:
+    area: 3147.18
+    delay: 3786.85
+  sqrt:
+    area: 6209.21
+    delay: 169676.44
+  square:
+    area: 11198.37
+    delay: 2063.66
