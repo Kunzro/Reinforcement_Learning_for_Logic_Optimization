@@ -7,6 +7,7 @@ import ray.rllib.agents.ppo as ppo
 import yaml
 from datetime import datetime
 import os
+from logger import save_results
 
 with open('/home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/configs/adder.yml', 'r') as file:
     env_config = yaml.safe_load(file)
@@ -23,6 +24,7 @@ config["num_envs_per_worker"] = 1
 config["rollout_fragment_length"] = env_config["MAX_STEPS"]
 #config["train_batch_size"] = env_config["MAX_STEPS"]*4
 config["keep_per_episode_custom_metrics"] = True
+config["preprocessor_pref"] = env_config["preprocessor_pref"]
 #config["sgd_minibatch_size"] = env_config["MAX_STEPS"]
 
 class MyCallbacks(DefaultCallbacks):
@@ -61,9 +63,9 @@ config["callbacks"] = MyCallbacks
 
 def logger_creator(config):
     date_str = datetime.today().strftime("%Y-%m-%d")
-    logdir_prefix = "{}_{}_{}_{}".format("AIG", env_config["circuit_name"], "PPO", date_str)
+    logdir_prefix = "{}_{}_{}_{}".format("TEST_AIG", env_config["circuit_name"], "PPO", date_str)
     home_dir = os.getcwd()
-    logdir = os.path.join(home_dir, logdir_prefix)
+    logdir = os.path.join(home_dir, "results", logdir_prefix)
     os.makedirs(logdir, exist_ok=True)
     return UnifiedLogger(config, logdir, loggers=None)
 
@@ -72,6 +74,16 @@ algo = PPOTrainer(config=config, logger_creator=logger_creator)
 def func(env):
     print(env.area)
 
-for i in range(100):
+for i in range(2):
     result = algo.train()
-    #print(pretty_print(result))
+
+# save stats and the used env_config
+yaml.safe_dump(env_config, )
+results_dir = os.path.join(algo.logdir, "results.npz")
+save_results(algo, results_dir)
+
+config_dir = os.path.join(algo.logdir, "config.yml")
+with open(config_dir, 'w') as file:
+    yaml.dump(env_config, file, default_flow_style=False)
+
+del algo

@@ -1,56 +1,34 @@
+from ctypes import byref, c_float, c_int
+from ray.rllib.utils.spaces.repeated import Repeated
 import numpy as np
 import yaml
-
 from gym import Env, spaces
 from gym.utils.env_checker import check_env
-from ctypes import c_float, c_int, byref
-from abc_ctypes import Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNumNodesAndLevels, Abc_Start, Abc_Stop, Abc_FrameGetGlobalFrame, Cmd_CommandExecute
+from logger import RLfLO_logger
+
+from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea,
+                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_Start, Abc_Stop,
+                        Cmd_CommandExecute)
 
 
 class Aig_Env(Env):
     metadata = {"render_modes": []}
 
-
-    def get_best_known_delays(env):
-        return [env.best_known_delay, env.area_at_best_known_delay, env.reward_at_best_known_delay, env.best_known_trajectory_delay]
-
-    def get_best_known_rewards(env):
-        return [env.best_known_accumulated_reward, env.area_at_best_known_reward, env.delay_at_best_known_reward, env.best_known_trajectory_reward]
-
-    def get_best_known_area(trainer):
-
-        def get_area_stats(env):
-            return [env.best_known_area, env.delay_at_best_known_area, env.reward_at_best_known_area, env.best_known_trajectory_area]
-
-        area_stats = trainer.workers.foreach_env(get_area_stats)
-        area_stats = [result for result in area_stats if result != []]  # remove empty list from local worker that has potentially no env
-        best_known_areas = [stat[0] for worker_stats in area_stats for stat in worker_stats]
-        delays_at_best_known_areas = [stat[1] for worker_stats in area_stats for stat in worker_stats]
-        rewards_at_best_known_areas = [stat[2] for worker_stats in area_stats for stat in worker_stats]
-        best_known_trajectories_delays = [stat[3] for worker_stats in area_stats for stat in worker_stats]
-        best_known_area_arg = np.argmin(best_known_areas)
-        stats = {
-            'best_known_area': best_known_areas[best_known_area_arg],
-            'delay_at_best_known_area': delays_at_best_known_areas[best_known_area_arg],
-            'reward_at_best_known_area': rewards_at_best_known_areas[best_known_area_arg],
-            'best_known_trajectory_area': best_known_trajectories_delays[best_known_area_arg],
-        }
-        return stats
-
     def __init__(self, env_config) -> None:
         self.env_config = env_config
+        self.use_graph = env_config["use_graph"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
         self.target_delay = env_config["target_delay"]
         self.MAX_STEPS = self.env_config["MAX_STEPS"]
-        self.max_episode_steps = self.env_config["MAX_STEPS"]
+        self._max_episode_steps = self.env_config["MAX_STEPS"]
 
         # keep trac of the history and best episode/trajectory
-        self.best_known_area = float('inf')
-        self.best_known_delay = float('inf')
-        self.best_known_accumulated_reward = float('-inf')
-        self.best_known_trajectory_reward = []
-        self.best_known_trajectory_area = []
-        self.best_known_trajectory_delay = []
+        self.logger = RLfLO_logger(self)
+        self.step_num = 0
+        self.episode = 0   
+        self.done = False
+        self.reward = 0
+        self.accumulated_reward = 0
         self.current_trajectory = []
 
         # initialize variables to be used to get metrices from ABC
@@ -61,14 +39,22 @@ class Aig_Env(Env):
 
         # define action and observation spaces
         self.action_space = spaces.Discrete(len(env_config["optimizations"]["aig"]))
-        self.observation_space = spaces.Dict(
-            {
-                "delay_area": spaces.Box(low=0, high=1000000000, shape=(2,), dtype=float),
-                "nodes_levels": spaces.Box(low=0, high=1000000000, shape=(2,), dtype=int),
-            }
-        )
+        if self.use_graph:
+            self.observation_space = spaces.Dict(
+                {
+                    "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
+                    "node_types": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000),
+                    "edge_index": Repeated(spaces.Box(0, 100000, shape=(2,), dtype=np.int32), max_len=10000),
+                    "edge_attr": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000)
+                }
+            )
+        else:
+            self.observation_space = spaces.Dict(
+                {
+                    "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
+                }
+            )
 
-        # Start the Abc fram TODO: check if this works with multiprocessing
         Abc_Start()
         self.pAbc = Abc_FrameGetGlobalFrame()
         Cmd_CommandExecute(self.pAbc, ('read ' + self.env_config["library_file"]).encode('UTF-8'))   # load library file
@@ -83,6 +69,16 @@ class Aig_Env(Env):
             self.prev_num_nodes = self.num_nodes
             self.prev_num_levels = self.num_levels
         Cmd_CommandExecute(self.pAbc, b"strash")
+
+        obs = {}
+
+        if self.use_graph:
+            node_types = self._get_node_types()
+            edge_index, edge_attr = self._get_edge_index()
+            obs["node_types"] = node_types
+            obs["edge_index"] = edge_index
+            obs["edge_attr"] = edge_attr
+
         Cmd_CommandExecute(self.pAbc, b'map')                                                                   # map
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
         Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_delay), byref(self.c_area), 0, 0, 0, 0, 0)        # get size and delay
@@ -90,12 +86,21 @@ class Aig_Env(Env):
         self.area = self.c_area.value
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
-        return {"delay_area": np.array([self.delay, self.area], dtype=float), "nodes_levels": np.array([self.num_nodes, self.num_levels], dtype=int)}
 
+        obs["states"] = np.array([self.delay, self.area, self.num_nodes, self.num_levels], dtype=np.float32)
+
+        return obs
 
     def _get_info(self):
         return {}
 
+    def _get_node_types(self):
+        node_types = Abc_RLfLOGetObjTypes_wrapper(pAbc=self.pAbc)
+        return node_types
+
+    def _get_edge_index(self):
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=self.pAbc)
+        return edge_index, edge_attr
 
     def _get_reward(self):
         """the reward is the improvement in area and delay (untill the delay target is met)
@@ -117,9 +122,11 @@ class Aig_Env(Env):
 
     def reset(self):
         """reset the state of Abc by simply reloading the original circuit"""
-        self.episode = 0   
+        self.logger.log_episode()
         self.step_num = 0
+        self.episode = 0   
         self.done = False
+        self.reward = 0
         self.accumulated_reward = 0
         self.current_trajectory = []
 
@@ -143,34 +150,20 @@ class Aig_Env(Env):
             raise Exception("An Environment that is done shouldn't call step()!")
         elif self.step_num >= self.MAX_STEPS:
             self.done = True
+
         # apply the action selected by the actor
         Cmd_CommandExecute(self.pAbc, b'strash')
         Cmd_CommandExecute(self.pAbc, self.env_config['optimizations']['aig'][action].encode('UTF-8'))
+
         # get the new observation, info and reward
         obs = self._get_obs()
         info = self._get_info()
         reward = self._get_reward()
 
-        # keep track of best results
-        self.accumulated_reward += reward
-        self.current_trajectory.append(self.env_config['optimizations']['aig'][action])
-        if self.area < self.best_known_area:
-            self.best_known_area = self.area
-            self.delay_at_best_known_area = self.delay
-            self.reward_at_best_known_area = self.accumulated_reward
-            self.best_known_trajectory_area = self.current_trajectory.copy()
+        self.reward = reward
+        self.action = action
 
-        if self.delay < self.best_known_delay:
-            self.best_known_delay = self.delay
-            self.area_at_best_known_delay = self.delay
-            self.reward_at_best_known_delay = self.accumulated_reward
-            self.best_known_trajectory_delay = self.current_trajectory.copy()
-
-        if self.best_known_accumulated_reward < self.accumulated_reward:
-            self.best_known_accumulated_reward = self.accumulated_reward
-            self.area_at_best_known_reward = self.area
-            self.delay_at_best_known_reward = self.delay
-            self.best_known_trajectory_reward = self.current_trajectory.copy()
+        self.logger.log_step()
 
         return obs, reward, self.done, info
 
@@ -187,6 +180,9 @@ if __name__ == "__main__":
     check_env(env=env)
     env = Aig_Env(env_config=env_config)
     env.reset()
-    for i in range(51):
-        res = env.step(env.action_space.sample())
-        print(res[2])
+    for j in range(10):
+        for i in range(50):
+            res = env.step(env.action_space.sample())
+            print(res[2])
+        env.reset()
+    print("wait")

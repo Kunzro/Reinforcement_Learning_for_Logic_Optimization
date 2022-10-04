@@ -28,7 +28,7 @@ optimizations:
 
 # agent training parameters
 episodes: 5
-iterations: 10
 delay_reward_factor: 1
+use_graph: False
+preprocessor_pref: null # null = no preprocessing
 MAX_STEPS: 50
-model_dir: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/model/_rllib/adder/model.ckpt   # must be absolute path
