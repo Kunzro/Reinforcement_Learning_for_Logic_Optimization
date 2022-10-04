@@ -1,4 +1,5 @@
 from ctypes import *
+import numpy as np
 import faulthandler
 
 faulthandler.enable()
@@ -602,6 +603,50 @@ Abc_RLfLOGetNumNodesAndLevels = getattr(lib, "Abc_RLfLOGetNumNodesAndLevels")
 Abc_RLfLOGetNumNodesAndLevels.argtypes = [POINTER(Abc_Frame_t), POINTER(c_int), POINTER(c_int)]
 Abc_RLfLOGetNumNodesAndLevels.restype = None
 
+Abc_RLfLOPrintNodeIds = getattr(lib, "Abc_RLfLOPrintNodeIds")
+Abc_RLfLOPrintNodeIds.argtypes = [POINTER(Abc_Frame_t)]
+Abc_RLfLOPrintNodeIds.restype = None
+
+Abc_RLfLOGetObjTypes = getattr(lib, "Abc_RLfLOGetObjTypes")
+Abc_RLfLOGetObjTypes.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_int, ndim=2, flags='C_CONTIGUOUS')]
+Abc_RLfLOGetObjTypes.restype = None
+
+Abc_RLfLOGetNumEdges = getattr(lib, "Abc_RLfLOGetNumEdges")
+Abc_RLfLOGetNumEdges.argtypes = [POINTER(Abc_Frame_t), POINTER(c_int)]
+Abc_RLfLOGetNumEdges.restype = None
+
+Abc_RLfLOGetEdges = getattr(lib, "Abc_RLfLOGetEdges")
+Abc_RLfLOGetEdges.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_int, ndim=2, flags='C_CONTIGUOUS'), c_int, np.ctypeslib.ndpointer(dtype=c_int, ndim=2, flags='C_CONTIGUOUS') ]
+Abc_RLfLOGetEdges.restype = None
+
+Abc_RLfLOGetNumObjs = getattr(lib, "Abc_RLfLOGetNumObjs")
+Abc_RLfLOGetNumObjs.argtyoes = [POINTER(Abc_Frame_t), POINTER(c_int)]
+Abc_RLfLOGetNumObjs.restype = None
+
+Abc_RLfLOPrintObjNum2x = getattr(lib, "Abc_RLfLOPrintObjNum2x")
+Abc_RLfLOPrintObjNum2x.argtypes = [POINTER(Abc_Frame_t)]
+Abc_RLfLOPrintObjNum2x.restype = None
+
+Abc_RLfLOSizeofInt = getattr(lib, "Abc_RLfLOSizeofInt")
+Abc_RLfLOSizeofInt.argtypes = [POINTER(c_size_t)]
+Abc_RLfLOSizeofInt.restype = None
+
+def Abc_RLfLOGetObjTypes_wrapper(pAbc):
+    num_objs = c_int()
+    Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
+    arr = np.ones( (num_objs.value, 1), dtype=c_int ) * (-10)
+    Abc_RLfLOGetObjTypes(pAbc, arr)
+    return arr
+
+def Abc_RLfLOGetEdges_wrapper(pAbc):
+    num_edges = c_int()
+    Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
+    edge_index = np.ones( (2, num_edges.value), dtype=c_int ) * (-5)
+    edge_attr = np.ones( (num_edges.value, 1), dtype=c_int ) * (-6)
+    Abc_RLfLOGetEdges(pAbc, edge_index, num_edges, edge_attr)
+    return edge_index, edge_attr
+
+
 if __name__ == "__main__":
     Abc_Start()
     pAbc = Abc_FrameGetGlobalFrame()
@@ -643,8 +688,33 @@ if __name__ == "__main__":
     Cmd_CommandExecute(pAbc, b'map')
     Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
     Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
-    print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes}, NumLevels: {NumLevels}")
+    print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes.value}, NumLevels: {NumLevels.value}")
     Cmd_CommandExecute(pAbc, b'stime')
     Cmd_CommandExecute(pAbc, b'print_stats')
+
+    Cmd_CommandExecute(pAbc, b'strash')
+    #Cmd_CommandExecute(pAbc, b'map')
+
+    #Abc_RLfLOPrintNodeIds(pAbc)
+    size = c_size_t()
+    Abc_RLfLOSizeofInt(byref(size))
+    print(f"The size of integers is: {size}")
+
+    num_objs = c_int()
+    Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
+    print(f"the number of objects are: {num_objs}")
+
+    num_edges = c_int()
+    Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
+    print(f"The number of edges are: {num_edges}")
+
+    node_types = Abc_RLfLOGetObjTypes_wrapper(pAbc=pAbc)
+    print(f"the node types are: {node_types}")
+
+    edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=pAbc)
+    print(f"the edge_index are: {edge_index}")
+    print(f"the edge_attr are: {edge_attr}")
+
+    Abc_RLfLOPrintObjNum2x(pAbc)
 
     Abc_Stop()
