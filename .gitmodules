@@ -1,3 +1,9 @@
 [submodule "abc"]
-	path = abc
+	path = extern/abc
+	url = git@github.com:Kunzro/abc.git
+[submodule "RLfLO_mockturtle"]
+	path = extern/RLfLO_mockturtle
+	url = git@github.com:Kunzro/RLfLO_mockturtle.git
+[submodule "extern/abc"]
+	path = extern/abc
 	url = git@github.com:Kunzro/abc.git
