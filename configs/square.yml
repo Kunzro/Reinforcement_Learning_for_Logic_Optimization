@@ -1,12 +1,12 @@
 # path of the design verilog file
-circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/circuits/square.v
+circuit_file: square.v
 circuit_name: square
 
 # target delay of the circuit
 target_delay: 2200
 
 # standard cell library mapping
-library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib
+library_file: libraries/asap7.lib
 
 # available optimizaction actions
 optimizations:

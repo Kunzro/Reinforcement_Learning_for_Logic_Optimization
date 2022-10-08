@@ -1,12 +1,12 @@
 # path of the design verilog file
-circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/circuits/sqrt.v
+circuit_file: circuits/sqrt.v
 circuit_name: sqrt
 
 # target delay of the circuit
 target_delay: 170000
 
 # standard cell library mapping
-library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib
+library_file: libraries/asap7.lib
 
 # available optimizaction actions
 optimizations:

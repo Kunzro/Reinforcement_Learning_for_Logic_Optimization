@@ -5,6 +5,7 @@ import yaml
 from gym import Env, spaces
 from gym.utils.env_checker import check_env
 from logger import RLfLO_logger
+import os
 
 from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea,
                         Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_Start, Abc_Stop,
@@ -57,7 +58,8 @@ class Aig_Env(Env):
 
         Abc_Start()
         self.pAbc = Abc_FrameGetGlobalFrame()
-        Cmd_CommandExecute(self.pAbc, ('read ' + self.env_config["library_file"]).encode('UTF-8'))   # load library file
+        library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
+        Cmd_CommandExecute(self.pAbc, ('read ' + library_dir).encode('UTF-8'))   # load library file
 
     
     def _get_obs(self, reset=False):
@@ -131,7 +133,8 @@ class Aig_Env(Env):
         self.current_trajectory = []
 
         # load the circuit and get the initial observation
-        Cmd_CommandExecute(self.pAbc, ('read ' + self.env_config["circuit_file"]).encode('UTF-8'))               # load circuit
+        circuit_dir = os.path.join(os.getcwd(), self.env_config["circuit_file"])
+        Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))               # load circuit
         obs = self._get_obs(reset=True)
         info = self._get_info()
 
