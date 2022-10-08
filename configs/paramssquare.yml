@@ -1,0 +1,47 @@
+# Copyright (c) 2019, SCALE Lab, Brown University
+# All rights reserved.
+
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree. 
+
+# ======================================================================
+# This file holds parameters for running a DRiLLS agent for training and
+# inference. It sets up the RL environment along with the logic synthesis
+# environment to train the RL agent. 
+
+# change this to the abc binary path if the command is not recognized system-wide
+abc_binary: /home/jonathkoch/workspace/abc-master/abc
+
+# path of the verilog design file
+design_file: /home/jonathkoch/workspace/MajorityDRiLLS/tests/square.v
+name: square
+
+# standard cell library mapping
+mapping:
+  clock_period: 2200   # in pico seconds
+  library_file: asap7.lib
+
+# add more optimization to the toolbox
+optimizations:
+  mig:
+    - rewrite
+    - rewrite -udc
+    - rewrite -azg
+    - rewrite -udc -azg
+    - balance
+    - balance -c
+  aig:
+    - rewrite
+    - rewrite -z
+    - refactor
+    - refactor -z
+    - resub
+    - resub -z
+    - balance
+# the directory to hold the playground an agent uses to practice
+playground_dir: /home/jonathkoch/workspace/MajorityDRiLLS/playground
+
+# agent training parameters
+episodes: 50
+iterations: 30
+model_dir: /home/jonathkoch/workspace/MajorityDRiLLS/model/_rllib/square/model.ckpt   # must be absolute path

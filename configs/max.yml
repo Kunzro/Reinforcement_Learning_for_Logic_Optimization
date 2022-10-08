@@ -1,0 +1,33 @@
+# path of the design verilog file
+circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/circuits/max.v
+circuit_name: max
+
+# target delay of the circuit
+target_delay: 4000
+
+# standard cell library mapping
+library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib
+
+# available optimizaction actions
+optimizations:
+  mig:
+    - rewrite
+    - rewrite -udc
+    - rewrite -azg
+    - rewrite -udc -azg
+    - balance
+    - balance -c
+  aig:
+    - rewrite
+    - rewrite -z
+    - refactor
+    - refactor -z
+    - resub
+    - resub -z
+    - balance
+
+# agent training parameters
+delay_reward_factor: 10
+use_graph: False
+preprocessor_pref: null # null = no preprocessing
+MAX_STEPS: 50
