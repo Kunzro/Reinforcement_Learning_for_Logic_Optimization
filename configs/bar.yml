@@ -27,6 +27,7 @@ optimizations:
     - balance
 
 # agent training parameters
+train_iterations: 50
 delay_reward_factor: 10
 use_graph: False
 preprocessor_pref: null # null = no preprocessing

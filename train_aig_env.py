@@ -10,10 +10,10 @@ import os
 from logger import save_results
 
 with open('/home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/configs/adder.yml', 'r') as file:
-    env_config = yaml.safe_load(file)
+    config = yaml.safe_load(file)
 
 config = ppo.DEFAULT_CONFIG.copy()
-config["env_config"] = env_config
+config["env_config"] = config
 config["framework"] = "torch"
 config["env"] = Aig_Env
 config["num_gpus"] = 0
@@ -21,11 +21,11 @@ config["num_workers"] = 10
 config["batch_mode"] = "complete_episodes"
 config["num_gpus_per_worker"] = 0
 config["num_envs_per_worker"] = 1
-config["rollout_fragment_length"] = env_config["MAX_STEPS"]
-#config["train_batch_size"] = env_config["MAX_STEPS"]*4
+config["rollout_fragment_length"] = config["MAX_STEPS"]
+#config["train_batch_size"] = config["MAX_STEPS"]*4
 config["keep_per_episode_custom_metrics"] = True
-config["preprocessor_pref"] = env_config["preprocessor_pref"]
-#config["sgd_minibatch_size"] = env_config["MAX_STEPS"]
+config["preprocessor_pref"] = config["preprocessor_pref"]
+#config["sgd_minibatch_size"] = config["MAX_STEPS"]
 
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker, base_env, policies, episode, **kwargs):
@@ -63,7 +63,7 @@ config["callbacks"] = MyCallbacks
 
 def logger_creator(config):
     date_str = datetime.today().strftime("%Y-%m-%d")
-    logdir_prefix = "{}_{}_{}_{}".format("TEST_AIG", env_config["circuit_name"], "PPO", date_str)
+    logdir_prefix = "{}_{}_{}_{}".format("AIG", config["circuit_name"], "PPO", date_str)
     home_dir = os.getcwd()
     logdir = os.path.join(home_dir, "results", logdir_prefix)
     os.makedirs(logdir, exist_ok=True)
@@ -74,16 +74,16 @@ algo = PPOTrainer(config=config, logger_creator=logger_creator)
 def func(env):
     print(env.area)
 
-for i in range(2):
+for i in range(config["train_iterations"]):
     result = algo.train()
 
-# save stats and the used env_config
-yaml.safe_dump(env_config, )
+# save stats and the used config
+yaml.safe_dump(config, )
 results_dir = os.path.join(algo.logdir, "results.npz")
 save_results(algo, results_dir)
 
 config_dir = os.path.join(algo.logdir, "config.yml")
 with open(config_dir, 'w') as file:
-    yaml.dump(env_config, file, default_flow_style=False)
+    yaml.dump(config, file, default_flow_style=False)
 
 del algo
