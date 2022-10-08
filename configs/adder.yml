@@ -1,12 +1,12 @@
 # path of the design verilog file
-circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/circuits/adder.v
+circuit_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/circuits/adder.v
 circuit_name: adder
 
 # target delay of the circuit
 target_delay: 2000
 
 # standard cell library mapping
-library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/code/asap7.lib
+library_file: /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib
 
 # available optimizaction actions
 optimizations:
@@ -27,8 +27,7 @@ optimizations:
     - balance
 
 # agent training parameters
-episodes: 5
-delay_reward_factor: 1
+delay_reward_factor: 10
 use_graph: False
 preprocessor_pref: null # null = no preprocessing
 MAX_STEPS: 50

@@ -569,7 +569,7 @@ class SC_Man(Structure):
     pass
 # LOAD THE LIBRARY
 
-lib = cdll.LoadLibrary("/home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/Reinforcement_Learning_for_Logic_Optimization/abc/libabc.so")
+lib = cdll.LoadLibrary("extern/abc/libabc.so")
 
 Abc_Start = getattr(lib, "Abc_Start")
 Abc_Start.argtypes = []

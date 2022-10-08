@@ -133,3 +133,6 @@ test.py
 
 # ignore vscode stuff
 .vscode
+
+# ignore results
+/results
