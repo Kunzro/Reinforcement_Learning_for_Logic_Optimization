@@ -5,6 +5,7 @@ import yaml
 from gym import Env, spaces
 from gym.utils.env_checker import check_env
 from logger import RLfLO_logger
+import time
 
 from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea,
                         Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_Start, Abc_Stop,
@@ -14,7 +15,8 @@ from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_
 class Aig_Env(Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, env_config) -> None:
+    def __init__(self, env_config, verbose=False) -> None:
+        self.verbose = verbose
         self.env_config = env_config
         self.use_graph = env_config["use_graph"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
@@ -152,13 +154,20 @@ class Aig_Env(Env):
             self.done = True
 
         # apply the action selected by the actor
+        strash_start = time.time()
         Cmd_CommandExecute(self.pAbc, b'strash')
+        strash_end = time.time()
         Cmd_CommandExecute(self.pAbc, self.env_config['optimizations']['aig'][action].encode('UTF-8'))
+        command_end = time.time()
 
         # get the new observation, info and reward
+        obs_start = time.time()
         obs = self._get_obs()
+        obs_end = time.time()
         info = self._get_info()
         reward = self._get_reward()
+        if self.verbose:
+            print(f"Strash time: {strash_end-strash_start:.5f}, Command time: {command_end-strash_end:.5f}, Obs time: {obs_end-obs_start:.5f}")
 
         self.reward = reward
         self.action = action
