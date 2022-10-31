@@ -6,17 +6,27 @@ circuit_name: sqrt
 target_delay: 170000
 
 # standard cell library mapping
-library_file: libraries/asap7.lib
+library_file: libraries/asap7_short.genlib
 
 # available optimizaction actions
 optimizations:
   mig:
     - rewrite
-    - rewrite -udc
     - rewrite -azg
-    - rewrite -udc -azg
+    - rewrite -udc
+    - rewrite -pd
+    - rewrite -azg -udc
+    - rewrite -azg -pd
+    - rewrite -udc -pd
+    - rewrite -azg -udc -pd
     - balance
     - balance -c
+    #- refactor
+    #- refactor -azg
+    #- refactor -udc
+    #- refactor -azg -udc
+    - resub
+    - resub -pd
   aig:
     - rewrite
     - rewrite -z
@@ -25,6 +35,10 @@ optimizations:
     - resub
     - resub -z
     - balance
+
+# only for Mockturtle relevant
+mockturtle:
+  graph_type: mig
 
 # agent training parameters
 train_iterations: 50
