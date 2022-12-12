@@ -1,9 +1,9 @@
 from ctypes import byref, c_float, c_int
 from ray.rllib.utils.spaces.repeated import Repeated
+from ray.rllib.utils import check_env
 import numpy as np
 import yaml
 from gym import Env, spaces
-from gym.utils.env_checker import check_env
 from logger import RLfLO_logger
 import time
 import os
@@ -11,7 +11,7 @@ import tracemalloc
 from extern.RLfLO_mockturtle.build import Mockturtle_api
 
 from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea,
-                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_Start, Abc_Stop,
+                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_RLfLOMapGetAreaDelay, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
 
 class Mockturtle_env(Env):
@@ -40,9 +40,9 @@ class Mockturtle_env(Env):
             self.observation_space = spaces.Dict(
                 {
                     "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
-                    "node_types": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000),
-                    "edge_index": Repeated(spaces.Box(0, 100000, shape=(2,), dtype=np.int32), max_len=10000),
-                    "edge_attr": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000)
+                    "node_types": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=2000),
+                    "edge_index": Repeated(spaces.Box(0, 100000, shape=(2,), dtype=np.int32), max_len=4000),
+                    "edge_attr": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=4000)
                 }
             )
         else:
@@ -207,9 +207,19 @@ class Aig_Env(Env):
 
         # initialize variables to be used to get metrices from ABC
         self.c_delay = c_float()
+        self.c_delay2 = c_float()
+        self.c_delay3 = c_float()
         self.c_area = c_float()
+        self.c_area2 = c_float()
+        self.c_area3 = c_float()
         self.c_num_nodes = c_int()
         self.c_num_levels = c_int()
+
+        Abc_Start()
+        self.pAbc = Abc_FrameGetGlobalFrame()
+        library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
+        Cmd_CommandExecute(self.pAbc, ('read ' + library_dir).encode('UTF-8'))   # load library file
+        self.reset()
 
         # define action and observation spaces
         self.action_space = spaces.Discrete(len(env_config["optimizations"]["aig"]))
@@ -217,9 +227,11 @@ class Aig_Env(Env):
             self.observation_space = spaces.Dict(
                 {
                     "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
-                    "node_types": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000),
-                    "edge_index": Repeated(spaces.Box(0, 100000, shape=(2,), dtype=np.int32), max_len=10000),
-                    "edge_attr": Repeated(spaces.Box(0, 10, shape=(1,), dtype=np.int32), max_len=10000)
+                    "node_types": spaces.Box(0, 10, shape=(self.max_nodes, 1), dtype=np.int32),
+                    "edge_index": spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int32),
+                    "edge_attr": spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.int32),
+                    "node_data_size": spaces.Discrete(self.max_nodes),
+                    "edge_data_size": spaces.Discrete(self.max_edges)
                 }
             )
         else:
@@ -228,11 +240,6 @@ class Aig_Env(Env):
                     "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
                 }
             )
-
-        Abc_Start()
-        self.pAbc = Abc_FrameGetGlobalFrame()
-        library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
-        Cmd_CommandExecute(self.pAbc, ('read ' + library_dir).encode('UTF-8'))   # load library file
 
     
     def _get_obs(self, reset=False):
@@ -250,23 +257,34 @@ class Aig_Env(Env):
         if self.use_graph:
             node_types = self._get_node_types()
             edge_index, edge_attr = self._get_edge_index()
-            obs["node_types"] = node_types
-            obs["edge_index"] = edge_index
-            obs["edge_attr"] = edge_attr
+            if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 2x the initial num
+                self.max_nodes = node_types.shape[0]*2
+                self.max_edges = edge_attr.shape[0]*2
+            node_data_size = node_types.shape[0]
+            edge_data_size =  edge_index.shape[1]
+            assert self.max_nodes-node_data_size >= 0, "the observation is bigger than the maximum size of the array."
+            assert self.max_edges-edge_data_size >= 0, "the observation is bigger than the maximum size of the array."
+            assert edge_data_size == edge_attr.shape[0], "the size for edge attr and edge index should be the same." # make sure egde_attr size == edge_data size
+            obs["node_types"] = np.pad(node_types, ((0, self.max_nodes-node_data_size), (0, 0)))
+            obs["edge_index"] = np.pad(edge_index, ((0,0), (0, self.max_edges-edge_data_size)))
+            obs["edge_attr"] = np.pad(edge_attr, ((0, self.max_edges-edge_data_size), (0, 0)))
+            obs["node_data_size"] = node_data_size
+            obs["edge_data_size"] = edge_data_size
 
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
-        Cmd_CommandExecute(self.pAbc, b'map')                                                                   # map
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_delay), byref(self.c_area), 0, 0, 0, 0, 0)        # get size and delay
+        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0)    # map and get area and delay TARGET DELAY MODE
         if self.trmalloc:
             obs_snapshot_end = tracemalloc.take_snapshot()
             obs_stats = obs_snapshot_end.compare_to(obs_snapshot_start, 'lineno')
             print('\n' * 2, "OBS STATS:")
             for stat in obs_stats[:10]:
                 print(stat)
-        self.delay = self.c_delay.value
-        self.area = self.c_area.value
+        self.delay = self.c_delay3.value
+        self.area = self.c_area3.value
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
 
@@ -378,33 +396,69 @@ class Aig_Env(Env):
 
 
 if __name__ == "__main__":
-    adder_config = os.path.abspath("configs/multiplier.yml")
+    adder_config = os.path.abspath("configs/adder.yml")
     with open(adder_config, 'r') as file:
         env_config = yaml.safe_load(file)
     
-    test_aig_env = False
+    test_aig_env = True
 
     if test_aig_env:
         env = Aig_Env(env_config=env_config)
         env.reset()
-        check_env(env=env)
+        check_env(env)
+        env.reset()
         env = Aig_Env(env_config=env_config)
         env.reset()
         for j in range(10):
+            num_nodes = []
+            areas = []
+            areas2 = []
+            areas3 = []
+            delays = []
+            delays2 = []
+            delays3 = []
             for i in range(50):
                 res = env.step(env.action_space.sample())
-                print(res[2])
+                #print(res[2])
+                num_nodes.append(res[0]["states"][2])
+                areas.append(res[0]["states"][1])
+                areas2.append(env.c_area2.value)
+                areas3.append(env.c_area3.value)
+                delays.append(res[0]["states"][0])
+                delays2.append(env.c_delay2.value)
+                delays3.append(env.c_delay3.value)
             env.reset()
+            num_nodes = np.array(num_nodes)
+            num_nodes_sorted = np.sort(num_nodes)[::-1]
+            #print(num_nodes)
+            print("areas:")
+            print(areas)
+            print()
+            print("areas2:")
+            print(areas2)
+            print()
+            print("areas3:")
+            print(areas3)
+            print()
+            print("delay:")
+            print(delays)
+            print()
+            print("delay2:")
+            print(delays2)
+            print()
+            print("delay3:")
+            print(delays3)
+            print(np.all(num_nodes == num_nodes_sorted))
         print("wait")
 
     else:    
-        env = Mockturtle_env(env_config=env_config, graph_type='mig')
+        env = Mockturtle_env(env_config=env_config)
         env.reset()
         print("checking env")
         check_env(env=env)
         print("check successfull")
 
-        env = Mockturtle_env(env_config=env_config, graph_type='mig')
+        env = Mockturtle_env(env_config=env_config)
         env.reset()
 
         print("test all actions")

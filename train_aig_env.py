@@ -1,14 +1,14 @@
 import numpy as np
-from aig_env import Aig_Env
+from aig_env import Aig_Env, Mockturtle_env
 from ray.tune.logger import pretty_print, UnifiedLogger
-from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.agents.callbacks import DefaultCallbacks
-import ray.rllib.agents.ppo as ppo
+from ray.rllib.algorithms import ppo
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import yaml
 from datetime import datetime
 import os
 from logger import save_results
 import argparse
+from models import GCN
 
 
 parser = argparse.ArgumentParser(description="Train a RL agent to optimize logic circuits.")
@@ -22,8 +22,12 @@ config = ppo.DEFAULT_CONFIG.copy()
 config["env_config"] = experiment_config
 config["framework"] = "torch"
 config["env"] = Aig_Env
+config["model"] = {
+    "custom_model": GCN,
+    "custom_model_config": {}
+}
 config["num_gpus"] = 0
-config["num_workers"] = 5
+config["num_workers"] = 0
 config["batch_mode"] = "complete_episodes"
 config["num_gpus_per_worker"] = 0
 config["num_envs_per_worker"] = 1
@@ -32,6 +36,7 @@ config["rollout_fragment_length"] = experiment_config["MAX_STEPS"]
 config["keep_per_episode_custom_metrics"] = True
 config["preprocessor_pref"] = experiment_config["preprocessor_pref"]
 #config["sgd_minibatch_size"] = experiment_config["MAX_STEPS"]
+config["disable_env_checking"] = True
 
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker, base_env, policies, episode, **kwargs):
@@ -69,13 +74,13 @@ config["callbacks"] = MyCallbacks
 
 def logger_creator(config):
     date_str = datetime.today().strftime("%Y-%m-%d")
-    logdir_prefix = "{}_{}_{}_{}".format("AIG", experiment_config["circuit_name"], "PPO", date_str)
+    logdir_prefix = "{}_{}_{}_{}".format("MIG", experiment_config["circuit_name"], "PPO", date_str)
     home_dir = os.getcwd()
     logdir = os.path.join(home_dir, "results", logdir_prefix)
     os.makedirs(logdir, exist_ok=True)
     return UnifiedLogger(config, logdir, loggers=None)
 
-algo = PPOTrainer(config=config, logger_creator=logger_creator)
+algo = ppo.PPO(config=config, logger_creator=logger_creator)
 
 def func(env):
     print(env.area)

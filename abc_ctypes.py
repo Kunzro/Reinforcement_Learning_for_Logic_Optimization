@@ -631,6 +631,10 @@ Abc_RLfLOSizeofInt = getattr(lib, "Abc_RLfLOSizeofInt")
 Abc_RLfLOSizeofInt.argtypes = [POINTER(c_size_t)]
 Abc_RLfLOSizeofInt.restype = None
 
+Abc_RLfLOMapGetAreaDelay = getattr(lib, "Abc_RLfLOMapGetAreaDelay")
+Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int]
+Abc_RLfLOMapGetAreaDelay.restype = c_int
+
 def Abc_RLfLOGetObjTypes_wrapper(pAbc):
     num_objs = c_int()
     Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
@@ -648,73 +652,132 @@ def Abc_RLfLOGetEdges_wrapper(pAbc):
 
 
 if __name__ == "__main__":
-    Abc_Start()
-    pAbc = Abc_FrameGetGlobalFrame()
-    pAbc2 = Abc_FrameGetGlobalFrame()
-    print(f"pAbc == pAbc2: {addressof(pAbc.contents) == addressof(pAbc2.contents)}, pAbc: {pAbc}, pAbc2: {pAbc2}")
-    print(f"pAbc.contents == pAbc[0]: {addressof(pAbc.contents) == addressof(pAbc[0])}")
-    read_def = Cmd_CommandIsDefined(pAbc, b'read')
-    print(read_def)
-    lib_loaded = Cmd_CommandExecute(pAbc, b'read /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/code/asap7.lib')
-    print(f'lib_loaded: {lib_loaded}; 0 = success, 1 = failed')
-    ntk_loaded = Cmd_CommandExecute(pAbc, b'read /home/roman/Documents/Studium/Masterthesis_RL_for_logic_synthesis/code-nosync/MajorityDRiLLS/circuits/adder.v')
-    print(f'ntk_loaded: {ntk_loaded}; 0 = success, 1 = failed')
+    def Start_and_load():
+        Abc_Start()
+        pAbc = Abc_FrameGetGlobalFrame()
+        lib_loaded = Cmd_CommandExecute(pAbc, b'read /home/kunzro/workspace/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib')
+        ntk_loaded = Cmd_CommandExecute(pAbc, b'read /home/kunzro/workspace/Reinforcement_Learning_for_Logic_Optimization/circuits/adder.v')
+        return pAbc
 
 
-    Cmd_CommandExecute(pAbc, b'map')
-    MaxDelay = c_float()
-    TotalArea = c_float()
-    NumNodes = c_int()
-    NumLevels = c_int()
-    Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
-    Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
-    print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes}, NumLevels: {NumLevels}")
-    Cmd_CommandExecute(pAbc, b'stime')
-    Cmd_CommandExecute(pAbc, b'print_stats')
+    def testMapAreaDelay():
+        MaxDelay = c_float()
+        TotalArea = c_float()
+        NumNodes = c_int()
+        NumLevels = c_int()
+        MaxDelay2 = c_float()
+        TotalArea2 = c_float()
+        NumNodes2 = c_int()
+        NumLevels2 = c_int()
+        actions = [
+            'rewrite',
+            'balance',
+            'rewrite',
+            'resub',
+            'rewrite -z',
+            'balance',
+            'balance',
+            'refactor',
+            'balance',
+            'resub -z'
+        ]
+        results_old = []
+        for i in range(len(actions)):
+            # performe all the mapping in the "old" way
+            pAbc = Start_and_load()
+            for inner_action in actions[:i+1]:
+                Cmd_CommandExecute(pAbc, b'strash')
+                Cmd_CommandExecute(pAbc, inner_action.encode('utf-8'))
+            Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
+            Cmd_CommandExecute(pAbc, b'map')
+            Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(TotalArea), byref(MaxDelay), 0, 0, 0, 0, 0)
+            Abc_Stop()
+            results_old.append((MaxDelay.value, TotalArea.value, NumNodes.value, NumLevels.value))
 
-    Cmd_CommandExecute(pAbc, b'strash')
-    Cmd_CommandExecute(pAbc, b'rewrite')
+        pAbc = Start_and_load()
+        results_new = []
+        for action in actions:
+            Cmd_CommandExecute(pAbc, b'strash')
+            Cmd_CommandExecute(pAbc, action.encode('utf-8'))
+            Abc_RLfLOMapGetAreaDelay(pAbc, byref(MaxDelay2), byref(TotalArea2), 0, 0, 0, 0, 0)
+            Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes2), byref(NumLevels2))
+            results_new.append((MaxDelay2.value, TotalArea2.value, NumNodes2.value, NumLevels2.value))
 
-    Cmd_CommandExecute(pAbc, b'map')
-    Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
-    Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
-    print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes}, NumLevels: {NumLevels}")
-    Cmd_CommandExecute(pAbc, b'stime')
-    Cmd_CommandExecute(pAbc, b'print_stats')
+        for res1, res2 in zip(results_new, results_old):
+            for val1, val2 in zip(res1, res2):
+                assert val1 == val2, "different values found!"
+                print(f"val1: {val1} val2: {val2}")
 
-    Cmd_CommandExecute(pAbc, b'strash')
-    Cmd_CommandExecute(pAbc, b'rewrite')
+    testMapAreaDelay()
 
-    Cmd_CommandExecute(pAbc, b'map')
-    Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
-    Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
-    print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes.value}, NumLevels: {NumLevels.value}")
-    Cmd_CommandExecute(pAbc, b'stime')
-    Cmd_CommandExecute(pAbc, b'print_stats')
+    if False:
+        Abc_Start()
+        pAbc = Abc_FrameGetGlobalFrame()
+        pAbc2 = Abc_FrameGetGlobalFrame()
+        print(f"pAbc == pAbc2: {addressof(pAbc.contents) == addressof(pAbc2.contents)}, pAbc: {pAbc}, pAbc2: {pAbc2}")
+        print(f"pAbc.contents == pAbc[0]: {addressof(pAbc.contents) == addressof(pAbc[0])}")
+        read_def = Cmd_CommandIsDefined(pAbc, b'read')
+        print(read_def)
+        lib_loaded = Cmd_CommandExecute(pAbc, b'read /home/kunzro/workspace/Reinforcement_Learning_for_Logic_Optimization/libraries/asap7.lib')
+        print(f'lib_loaded: {lib_loaded}; 0 = success, 1 = failed')
+        ntk_loaded = Cmd_CommandExecute(pAbc, b'read /home/kunzro/workspace/Reinforcement_Learning_for_Logic_Optimization/circuits/adder.v')
+        print(f'ntk_loaded: {ntk_loaded}; 0 = success, 1 = failed')
 
-    Cmd_CommandExecute(pAbc, b'strash')
-    #Cmd_CommandExecute(pAbc, b'map')
 
-    #Abc_RLfLOPrintNodeIds(pAbc)
-    size = c_size_t()
-    Abc_RLfLOSizeofInt(byref(size))
-    print(f"The size of integers is: {size}")
+        Cmd_CommandExecute(pAbc, b'map')
+        MaxDelay = c_float()
+        TotalArea = c_float()
+        NumNodes = c_int()
+        NumLevels = c_int()
+        Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
+        Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
+        print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes}, NumLevels: {NumLevels}")
+        Cmd_CommandExecute(pAbc, b'stime')
+        Cmd_CommandExecute(pAbc, b'print_stats')
 
-    num_objs = c_int()
-    Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-    print(f"the number of objects are: {num_objs}")
+        Cmd_CommandExecute(pAbc, b'strash')
+        Cmd_CommandExecute(pAbc, b'rewrite')
 
-    num_edges = c_int()
-    Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
-    print(f"The number of edges are: {num_edges}")
+        Cmd_CommandExecute(pAbc, b'map')
+        Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
+        Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
+        print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes}, NumLevels: {NumLevels}")
+        Cmd_CommandExecute(pAbc, b'stime')
+        Cmd_CommandExecute(pAbc, b'print_stats')
 
-    node_types = Abc_RLfLOGetObjTypes_wrapper(pAbc=pAbc)
-    print(f"the node types are: {node_types}")
+        Cmd_CommandExecute(pAbc, b'strash')
+        Cmd_CommandExecute(pAbc, b'rewrite')
 
-    edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=pAbc)
-    print(f"the edge_index are: {edge_index}")
-    print(f"the edge_attr are: {edge_attr}")
+        Cmd_CommandExecute(pAbc, b'map')
+        Abc_RLfLOGetMaxDelayTotalArea(pAbc, byref(MaxDelay), byref(TotalArea), 0, 0, 0, 0, 0)
+        Abc_RLfLOGetNumNodesAndLevels(pAbc, byref(NumNodes), byref(NumLevels))
+        print(f"MaxDelay: {MaxDelay.value}, TotalArea: {TotalArea.value}, NumNodes: {NumNodes.value}, NumLevels: {NumLevels.value}")
+        Cmd_CommandExecute(pAbc, b'stime')
+        Cmd_CommandExecute(pAbc, b'print_stats')
 
-    Abc_RLfLOPrintObjNum2x(pAbc)
+        Cmd_CommandExecute(pAbc, b'strash')
+        #Cmd_CommandExecute(pAbc, b'map')
 
-    Abc_Stop()
+        #Abc_RLfLOPrintNodeIds(pAbc)
+        size = c_size_t()
+        Abc_RLfLOSizeofInt(byref(size))
+        print(f"The size of integers is: {size}")
+
+        num_objs = c_int()
+        Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
+        print(f"the number of objects are: {num_objs}")
+
+        num_edges = c_int()
+        Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
+        print(f"The number of edges are: {num_edges}")
+
+        node_types = Abc_RLfLOGetObjTypes_wrapper(pAbc=pAbc)
+        print(f"the node types are: {node_types}")
+
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=pAbc)
+        print(f"the edge_index are: {edge_index}")
+        print(f"the edge_attr are: {edge_attr}")
+
+        Abc_RLfLOPrintObjNum2x(pAbc)
+
+        Abc_Stop()
