@@ -10,7 +10,7 @@ import os
 import tracemalloc
 from extern.RLfLO_mockturtle.build import Mockturtle_api
 
-from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea,
+from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNodeFeatures_wrapper,
                         Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_RLfLOMapGetAreaDelay, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
 
@@ -187,6 +187,7 @@ class Aig_Env(Env):
         self.trmalloc = trmalloc
         self.env_config = env_config
         self.use_graph = env_config["use_graph"]
+        self.use_previous_action = env_config["use_previous_action"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
         self.target_delay = env_config["target_delay"]
         self.MAX_STEPS = self.env_config["MAX_STEPS"]
@@ -223,23 +224,19 @@ class Aig_Env(Env):
 
         # define action and observation spaces
         self.action_space = spaces.Discrete(len(env_config["optimizations"]["aig"]))
+        self.observation_space = spaces.Dict(
+            {
+                "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
+            }
+        )
+        if self.use_previous_action:
+            self.observation_space["previous_action"] = spaces.Box(low=-1, high=len(env_config["optimizations"]["mig"]), shape=(1,), dtype=np.int32)
         if self.use_graph:
-            self.observation_space = spaces.Dict(
-                {
-                    "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
-                    "node_types": spaces.Box(0, 10, shape=(self.max_nodes, 1), dtype=np.int32),
-                    "edge_index": spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int32),
-                    "edge_attr": spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.int32),
-                    "node_data_size": spaces.Discrete(self.max_nodes),
-                    "edge_data_size": spaces.Discrete(self.max_edges)
-                }
-            )
-        else:
-            self.observation_space = spaces.Dict(
-                {
-                    "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
-                }
-            )
+            self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 2), dtype=np.int32)
+            self.observation_space["edge_index"] = spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int32)
+            self.observation_space["edge_attr"] = spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.int32)
+            self.observation_space["node_data_size"] = spaces.Box(0, self.max_nodes, shape=(1,), dtype=np.int32)
+            self.observation_space["edge_data_size"] = spaces.Box(0, self.max_edges, shape=(1,), dtype=np.int32)
 
     
     def _get_obs(self, reset=False):
@@ -255,21 +252,27 @@ class Aig_Env(Env):
         obs = {}
 
         if self.use_graph:
-            node_types = self._get_node_types()
+            node_features = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 2x the initial num
-                self.max_nodes = node_types.shape[0]*2
+                self.max_nodes = node_features.shape[0]*2
                 self.max_edges = edge_attr.shape[0]*2
-            node_data_size = node_types.shape[0]
+            node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation is bigger than the maximum size of the array."
             assert self.max_edges-edge_data_size >= 0, "the observation is bigger than the maximum size of the array."
             assert edge_data_size == edge_attr.shape[0], "the size for edge attr and edge index should be the same." # make sure egde_attr size == edge_data size
-            obs["node_types"] = np.pad(node_types, ((0, self.max_nodes-node_data_size), (0, 0)))
+            obs["node_features"] = np.pad(node_features, ((0, self.max_nodes-node_data_size), (0, 0)))
             obs["edge_index"] = np.pad(edge_index, ((0,0), (0, self.max_edges-edge_data_size)))
             obs["edge_attr"] = np.pad(edge_attr, ((0, self.max_edges-edge_data_size), (0, 0)))
-            obs["node_data_size"] = node_data_size
-            obs["edge_data_size"] = edge_data_size
+            obs["node_data_size"] = np.array(node_data_size, dtype=np.int32).reshape((1,))
+            obs["edge_data_size"] = np.array(edge_data_size, dtype=np.int32).reshape((1,))
+
+        if self.use_previous_action:
+            if self.action is not None:
+                obs["previous_action"] = np.array(self.action, dtype=np.int32).reshape((1,))
+            else:
+                obs["previous_action"] = np.array(-1, dtype=np.int32).reshape((1,))
 
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
@@ -295,9 +298,9 @@ class Aig_Env(Env):
     def _get_info(self):
         return {}
 
-    def _get_node_types(self):
-        node_types = Abc_RLfLOGetObjTypes_wrapper(pAbc=self.pAbc)
-        return node_types
+    def _get_node_features(self):
+        node_features = Abc_RLfLOGetNodeFeatures_wrapper(pAbc=self.pAbc)
+        return node_features
 
     def _get_edge_index(self):
         edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=self.pAbc)
@@ -330,6 +333,7 @@ class Aig_Env(Env):
         self.reward = 0
         self.accumulated_reward = 0
         self.current_trajectory = []
+        self.action = None # None = env was resetted
 
         # load the circuit and get the initial observation
         circuit_dir = os.path.join(os.getcwd(), self.env_config["circuit_file"])
@@ -348,6 +352,7 @@ class Aig_Env(Env):
 
     def step(self, action):
         self.step_num += 1
+        self.action = action
         if self.done:
             raise Exception("An Environment that is done shouldn't call step()!")
         elif self.step_num >= self.MAX_STEPS:
@@ -384,7 +389,6 @@ class Aig_Env(Env):
             print(f"Strash time: {strash_end-strash_start:.5f}, Command time: {command_end-strash_end:.5f}, Obs time: {obs_end-obs_start:.5f}")
 
         self.reward = reward
-        self.action = action
 
         self.logger.log_step()
 
