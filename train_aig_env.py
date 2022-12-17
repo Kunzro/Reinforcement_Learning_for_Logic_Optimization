@@ -24,7 +24,7 @@ config["framework"] = "torch"
 config["env"] = Aig_Env
 config["model"] = {
     "custom_model": GCN,
-    "custom_model_config": {}
+    "custom_model_config": experiment_config
 }
 config["num_gpus"] = 0
 config["num_workers"] = 0

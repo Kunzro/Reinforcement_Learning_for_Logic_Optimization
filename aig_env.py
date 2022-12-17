@@ -232,11 +232,11 @@ class Aig_Env(Env):
         if self.use_previous_action:
             self.observation_space["previous_action"] = spaces.Box(low=-1, high=len(env_config["optimizations"]["mig"]), shape=(1,), dtype=np.int32)
         if self.use_graph:
-            self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 2), dtype=np.int32)
-            self.observation_space["edge_index"] = spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int32)
-            self.observation_space["edge_attr"] = spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.int32)
-            self.observation_space["node_data_size"] = spaces.Box(0, self.max_nodes, shape=(1,), dtype=np.int32)
-            self.observation_space["edge_data_size"] = spaces.Box(0, self.max_edges, shape=(1,), dtype=np.int32)
+            self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 2), dtype=np.float32)
+            self.observation_space["edge_index"] = spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int64)
+            self.observation_space["edge_attr"] = spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.float32)
+            self.observation_space["node_data_size"] = spaces.Box(1, self.max_nodes, shape=(1,), dtype=np.int32)
+            self.observation_space["edge_data_size"] = spaces.Box(1, self.max_edges, shape=(1,), dtype=np.int32)
 
     
     def _get_obs(self, reset=False):
@@ -277,8 +277,8 @@ class Aig_Env(Env):
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
         Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0)    # map and get area and delay TARGET DELAY MODE
         if self.trmalloc:
             obs_snapshot_end = tracemalloc.take_snapshot()
