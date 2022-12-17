@@ -616,7 +616,7 @@ Abc_RLfLOGetNumEdges.argtypes = [POINTER(Abc_Frame_t), POINTER(c_int)]
 Abc_RLfLOGetNumEdges.restype = None
 
 Abc_RLfLOGetEdges = getattr(lib, "Abc_RLfLOGetEdges")
-Abc_RLfLOGetEdges.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_int, ndim=2, flags='C_CONTIGUOUS'), c_int, np.ctypeslib.ndpointer(dtype=c_int, ndim=2, flags='C_CONTIGUOUS') ]
+Abc_RLfLOGetEdges.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_long, ndim=2, flags='C_CONTIGUOUS'), c_int, np.ctypeslib.ndpointer(dtype=c_float, ndim=2, flags='C_CONTIGUOUS') ]
 Abc_RLfLOGetEdges.restype = None
 
 Abc_RLfLOGetNumObjs = getattr(lib, "Abc_RLfLOGetNumObjs")
@@ -633,7 +633,11 @@ Abc_RLfLOSizeofInt.restype = None
 
 Abc_RLfLOMapGetAreaDelay = getattr(lib, "Abc_RLfLOMapGetAreaDelay")
 Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int]
-Abc_RLfLOMapGetAreaDelay.restype = c_int
+Abc_RLfLOMapGetAreaDelay.restype = None
+
+Abc_RLfLOGetNodeFeatures = getattr(lib, "Abc_RLfLOGetNodeFeatures")
+Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_float, ndim=2, flags='C_CONTIGUOUS'), c_size_t, c_size_t]
+Abc_RLfLOGetNodeFeatures.restype = None
 
 def Abc_RLfLOGetObjTypes_wrapper(pAbc):
     num_objs = c_int()
@@ -642,11 +646,18 @@ def Abc_RLfLOGetObjTypes_wrapper(pAbc):
     Abc_RLfLOGetObjTypes(pAbc, arr)
     return arr
 
+def Abc_RLfLOGetNodeFeatures_wrapper(pAbc):
+    num_objs = c_int()
+    Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
+    arr = np.ones( (num_objs.value, 2), dtype=c_float ) * (-10)
+    Abc_RLfLOGetNodeFeatures(pAbc, arr, *arr.shape)
+    return arr
+
 def Abc_RLfLOGetEdges_wrapper(pAbc):
     num_edges = c_int()
     Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
-    edge_index = np.ones( (2, num_edges.value), dtype=c_int ) * (-5)
-    edge_attr = np.ones( (num_edges.value, 1), dtype=c_int ) * (-6)
+    edge_index = np.ones( (2, num_edges.value), dtype=c_long ) * (-5)
+    edge_attr = np.ones( (num_edges.value, 1), dtype=c_float ) * (-6)
     Abc_RLfLOGetEdges(pAbc, edge_index, num_edges, edge_attr)
     return edge_index, edge_attr
 
@@ -708,9 +719,9 @@ if __name__ == "__main__":
                 assert val1 == val2, "different values found!"
                 print(f"val1: {val1} val2: {val2}")
 
-    testMapAreaDelay()
+    # testMapAreaDelay()
 
-    if False:
+    if True:
         Abc_Start()
         pAbc = Abc_FrameGetGlobalFrame()
         pAbc2 = Abc_FrameGetGlobalFrame()
@@ -723,6 +734,9 @@ if __name__ == "__main__":
         ntk_loaded = Cmd_CommandExecute(pAbc, b'read /home/kunzro/workspace/Reinforcement_Learning_for_Logic_Optimization/circuits/adder.v')
         print(f'ntk_loaded: {ntk_loaded}; 0 = success, 1 = failed')
 
+        Cmd_CommandExecute(pAbc, b'strash')
+        arr = Abc_RLfLOGetNodeFeatures_wrapper(pAbc)
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc)
 
         Cmd_CommandExecute(pAbc, b'map')
         MaxDelay = c_float()
