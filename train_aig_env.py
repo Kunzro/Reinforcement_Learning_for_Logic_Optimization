@@ -1,15 +1,14 @@
-import numpy as np
-from aig_env import Aig_Env, Mockturtle_env
-from ray.tune.logger import pretty_print, UnifiedLogger
-from ray.rllib.algorithms import ppo
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-import yaml
-from datetime import datetime
-import os
-from logger import save_results
 import argparse
-from models import GCN
+import os
 
+import yaml
+# from ray.rllib.algorithms import ppo
+from ray.rllib.algorithms.ppo import PPOConfig
+
+from aig_env import Abc_Env, Mockturtle_Env
+from utils import MyCallbacks, logger_creator
+from logger import save_results
+from models import GCN
 
 parser = argparse.ArgumentParser(description="Train a RL agent to optimize logic circuits.")
 parser.add_argument('--config_file', help="specify the config file used to run the experiment. eg from ./configs", required=True)
@@ -17,83 +16,57 @@ args = parser.parse_args()
 
 with open(args.config_file, 'r') as file:
     experiment_config = yaml.safe_load(file)
+    assert isinstance(experiment_config, dict), "yaml loading failed!"
 
-config = ppo.DEFAULT_CONFIG.copy()
-config["env_config"] = experiment_config
-config["framework"] = "torch"
-config["env"] = Aig_Env
-config["model"] = {
-    "custom_model": GCN,
-    "custom_model_config": experiment_config
-}
-config["num_gpus"] = 0
-config["num_workers"] = 0
-config["batch_mode"] = "complete_episodes"
-config["num_gpus_per_worker"] = 0
-config["num_envs_per_worker"] = 1
-config["rollout_fragment_length"] = experiment_config["MAX_STEPS"]
-#config["train_batch_size"] = experiment_config["MAX_STEPS"]*4
-config["keep_per_episode_custom_metrics"] = True
-config["preprocessor_pref"] = experiment_config["preprocessor_pref"]
-#config["sgd_minibatch_size"] = experiment_config["MAX_STEPS"]
-config["disable_env_checking"] = True
+if experiment_config["env"] == "Abc_Env":
+    experiment_env = Abc_Env
+elif experiment_config["env"] == "Mockturtle_Env":
+    experiment_env = Mockturtle_Env
+else:
+    raise Exception("invalid train env selected")
 
-class MyCallbacks(DefaultCallbacks):
-    def on_episode_start(self, *, worker, base_env, policies, episode, **kwargs):
-        assert episode.length == 0, (
-            "ERROR: `on_episode_start()` callback should be called right "
-            "after env reset!"
-        )
-        episode.custom_metrics["areas"] = []
-        episode.custom_metrics["delays"] = []
-        episode.custom_metrics["num_nodes"] = []
-        episode.custom_metrics["num_levels"] = []
+conf = PPOConfig()
+conf = conf.training(
+    sgd_minibatch_size=80,
+    train_batch_size = 800,
+    model={
+        "custom_model": GCN,
+        "custom_model_config": experiment_config
+    }
+)
+conf = conf.environment(
+    env=experiment_env,
+    env_config=experiment_config
+)
 
-    def on_episode_step(self, *, worker, base_env, policies = None, episode, **kwargs):
-        assert episode.length > 0, (
-            "ERROR: `on_episode_step()` callback should not be called right "
-            "after env reset!"
-        )
-        sub_envs = base_env.get_sub_environments()
-        episode.custom_metrics["areas"].extend([env.area for env in sub_envs])
-        episode.custom_metrics["delays"].extend([env.delay for env in sub_envs])
-        episode.custom_metrics["num_nodes"].extend([env.num_nodes for env in sub_envs])
-        episode.custom_metrics["num_levels"].extend([env.num_levels for env in sub_envs])
-     
-    def on_train_result(self, *, trainer, result, **kwargs) -> None:
-        areas = np.array(result["custom_metrics"]["areas"])
-        delays = np.array(result["custom_metrics"]["delays"])
-        result["custom_metrics"]["area_min"] = np.min(areas)
-        result["custom_metrics"]["min_area_mean"] = np.mean(np.min(areas, axis=1))
-        result["custom_metrics"]["delay_at_area_min"] = delays.flatten()[np.argmin(areas)]
-        result["custom_metrics"]["area_min_step_number"] = np.argmin(areas)%areas.shape[1]+1
-        result["custom_metrics"]["area_min_step_hist"] = np.argmin(areas, axis=1)
-
-config["callbacks"] = MyCallbacks
-        
-
-def logger_creator(config):
-    date_str = datetime.today().strftime("%Y-%m-%d")
-    logdir_prefix = "{}_{}_{}_{}".format("MIG", experiment_config["circuit_name"], "PPO", date_str)
-    home_dir = os.getcwd()
-    logdir = os.path.join(home_dir, "results", logdir_prefix)
-    os.makedirs(logdir, exist_ok=True)
-    return UnifiedLogger(config, logdir, loggers=None)
-
-algo = ppo.PPO(config=config, logger_creator=logger_creator)
-
-def func(env):
-    print(env.area)
+conf = conf.framework(framework='torch')
+conf = conf.rollouts(
+    num_rollout_workers=20,
+    rollout_fragment_length=experiment_config["MAX_STEPS"],
+    batch_mode='complete_episodes',
+    horizon=experiment_config["MAX_STEPS"],
+    preprocessor_pref=None
+)
+conf = conf.reporting(keep_per_episode_custom_metrics=True)
+conf = conf.debugging(
+    logger_creator=logger_creator,
+    logger_config=experiment_config,
+    log_level='WARN'
+)
+conf = conf.callbacks(callbacks_class=MyCallbacks)
+conf = conf.resources(num_gpus=1)
+conf = conf.experimental(_disable_preprocessor_api=True)
+ppo_algo = conf.build()
 
 for i in range(experiment_config["train_iterations"]):
-    result = algo.train()
+    result = ppo_algo.train()
 
 # save stats and the used config
-results_dir = os.path.join(algo.logdir, "results.npz")
-save_results(algo, results_dir)
+results_dir = os.path.join(ppo_algo.logdir, "results.npz")
+save_results(ppo_algo, results_dir)
 
-config_dir = os.path.join(algo.logdir, "experiment_config.yml")
+config_dir = os.path.join(ppo_algo.logdir, "experiment_config.yml")
 with open(config_dir, 'w') as file:
     yaml.safe_dump(experiment_config, file, default_flow_style=False)
 
-del algo
+del ppo_algo

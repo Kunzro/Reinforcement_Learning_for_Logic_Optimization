@@ -1,7 +1,6 @@
 import numpy as np
-from ray.rllib.agents.trainer import Trainer
 
-def save_results(trainer: Trainer, dir):
+def save_results(trainer, dir):
     def get_rewards(env):
         return env.logger.rewards
     def get_areas(env):
@@ -49,7 +48,7 @@ class RLfLO_logger():
 
     def log_episode(self):
         """call this at the end of the episode to log the episode eg in the rest function of the env"""
-        if self.env.step_num==self.env.MAX_STEPS:    # only save and reset if the episode had any steps
+        if self.env.step_num==self.env.horizon:    # only save and reset if the episode had any steps
             self.rewards.append(self.current_rewards.copy())
             self.areas.append(self.current_areas.copy())
             self.delays.append(self.current_delays.copy())

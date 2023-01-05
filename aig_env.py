@@ -14,7 +14,7 @@ from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_
                         Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_RLfLOMapGetAreaDelay, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
 
-class Mockturtle_env(Env):
+class Mockturtle_Env(Env):
 
     def __init__(self, env_config):
         self.env_config = env_config
@@ -22,8 +22,8 @@ class Mockturtle_env(Env):
         self.use_graph = env_config["use_graph"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
         self.target_delay = env_config["target_delay"]
-        self.MAX_STEPS = self.env_config["MAX_STEPS"]
-        self._max_episode_steps = self.env_config["MAX_STEPS"]
+        self.horizon = self.env_config["horizon"]
+        self._max_episode_steps = self.env_config["horizon"]
 
         # keep trac of the history and best episode/trajectory
         self.logger = RLfLO_logger(self)
@@ -101,7 +101,7 @@ class Mockturtle_env(Env):
         self.step_num += 1
         if self.done:
             raise Exception("An Environment that is done shouldn't call step()!")
-        elif self.step_num >= self.MAX_STEPS:
+        elif self.step_num >= self.horizon:
             self.done = True
 
         action_str = self.env_config['optimizations'][self.graph_type][action]
@@ -179,7 +179,7 @@ class Mockturtle_env(Env):
         return obs
 
 
-class Aig_Env(Env):
+class Abc_Env(Env):
     metadata = {"render_modes": []}
 
     def __init__(self, env_config, verbose=False, trmalloc=False) -> None:
@@ -190,8 +190,9 @@ class Aig_Env(Env):
         self.use_previous_action = env_config["use_previous_action"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
         self.target_delay = env_config["target_delay"]
-        self.MAX_STEPS = self.env_config["MAX_STEPS"]
-        self._max_episode_steps = self.env_config["MAX_STEPS"]
+        self.horizon = self.env_config["horizon"]
+        self._max_episode_steps = self.env_config["horizon"]
+        self.num_actions = len(env_config["optimizations"]["aig"])
 
         # tracemalloc if needed
         if self.trmalloc:
@@ -223,14 +224,14 @@ class Aig_Env(Env):
         self.reset()
 
         # define action and observation spaces
-        self.action_space = spaces.Discrete(len(env_config["optimizations"]["aig"]))
+        self.action_space = spaces.Discrete(self.num_actions)
         self.observation_space = spaces.Dict(
             {
                 "states": spaces.Box(low=0, high=10000000, shape=(4,), dtype=np.float32),
             }
         )
         if self.use_previous_action:
-            self.observation_space["previous_action"] = spaces.Box(low=-1, high=len(env_config["optimizations"]["mig"]), shape=(1,), dtype=np.int32)
+            self.observation_space["previous_action"] = spaces.Box(low=0, high=len(env_config["optimizations"]["mig"])+1, shape=(1,), dtype=np.int32)
         if self.use_graph:
             self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 2), dtype=np.float32)
             self.observation_space["edge_index"] = spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int64)
@@ -247,20 +248,20 @@ class Aig_Env(Env):
             self.prev_area = self.area
             self.prev_num_nodes = self.num_nodes
             self.prev_num_levels = self.num_levels
-        Cmd_CommandExecute(self.pAbc, b"strash")
+        # Cmd_CommandExecute(self.pAbc, b'strash')
 
         obs = {}
 
         if self.use_graph:
             node_features = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
-            if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 2x the initial num
-                self.max_nodes = node_features.shape[0]*2
-                self.max_edges = edge_attr.shape[0]*2
+            if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
+                self.max_nodes = node_features.shape[0]*4
+                self.max_edges = edge_attr.shape[0]*4
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
-            assert self.max_nodes-node_data_size >= 0, "the observation is bigger than the maximum size of the array."
-            assert self.max_edges-edge_data_size >= 0, "the observation is bigger than the maximum size of the array."
+            assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_nodes, node_data_size)
+            assert self.max_edges-edge_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_edges, edge_data_size)
             assert edge_data_size == edge_attr.shape[0], "the size for edge attr and edge index should be the same." # make sure egde_attr size == edge_data size
             obs["node_features"] = np.pad(node_features, ((0, self.max_nodes-node_data_size), (0, 0)))
             obs["edge_index"] = np.pad(edge_index, ((0,0), (0, self.max_edges-edge_data_size)))
@@ -272,7 +273,7 @@ class Aig_Env(Env):
             if self.action is not None:
                 obs["previous_action"] = np.array(self.action, dtype=np.int32).reshape((1,))
             else:
-                obs["previous_action"] = np.array(-1, dtype=np.int32).reshape((1,))
+                obs["previous_action"] = np.array(self.num_actions, dtype=np.int32).reshape((1,))
 
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
@@ -291,7 +292,7 @@ class Aig_Env(Env):
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
 
-        obs["states"] = np.array([self.delay, self.area, self.num_nodes, self.num_levels], dtype=np.float32)
+        obs["states"] = np.array([self.delay, self.area, self.num_nodes, self.num_levels], dtype=np.float32)/self.stats_normalization
 
         return obs
 
@@ -338,14 +339,26 @@ class Aig_Env(Env):
         # load the circuit and get the initial observation
         circuit_dir = os.path.join(os.getcwd(), self.env_config["circuit_file"])
         Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))               # load circuit
-        obs = self._get_obs(reset=True)
-        info = self._get_info()
+        Cmd_CommandExecute(self.pAbc, b'strash')
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
+        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        self.delay = self.c_delay3.value
+        self.area = self.c_area3.value
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
 
         # save initial metrics
         self.initial_delay = self.delay
         self.initial_area = self.area
         self.initial_num_nodes = self.num_nodes
         self.initial_num_levels = self.num_levels
+
+        self.stats_normalization = np.array([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=np.float32)
+
+        obs = self._get_obs(reset=True)
+        info = self._get_info()
     
         return obs
 
@@ -355,14 +368,14 @@ class Aig_Env(Env):
         self.action = action
         if self.done:
             raise Exception("An Environment that is done shouldn't call step()!")
-        elif self.step_num >= self.MAX_STEPS:
+        elif self.step_num >= self.horizon:
             self.done = True
 
         # apply the action selected by the actor
         strash_start = time.time()
         if self.trmalloc:
             strash_snapshot_start = tracemalloc.take_snapshot()
-        Cmd_CommandExecute(self.pAbc, b'strash')
+        # Cmd_CommandExecute(self.pAbc, b'strash')
         if self.trmalloc:
             strash_snapshot_end = tracemalloc.take_snapshot()
         strash_end = time.time()
@@ -400,18 +413,18 @@ class Aig_Env(Env):
 
 
 if __name__ == "__main__":
-    adder_config = os.path.abspath("configs/adder.yml")
+    adder_config = os.path.abspath("configs/square.yml")
     with open(adder_config, 'r') as file:
         env_config = yaml.safe_load(file)
     
     test_aig_env = True
 
     if test_aig_env:
-        env = Aig_Env(env_config=env_config)
+        env = Abc_Env(env_config=env_config)
         env.reset()
         check_env(env)
         env.reset()
-        env = Aig_Env(env_config=env_config)
+        env = Abc_Env(env_config=env_config)
         env.reset()
         for j in range(10):
             num_nodes = []
@@ -421,7 +434,7 @@ if __name__ == "__main__":
             delays = []
             delays2 = []
             delays3 = []
-            for i in range(50):
+            for i in range(40):
                 res = env.step(env.action_space.sample())
                 #print(res[2])
                 num_nodes.append(res[0]["states"][2])
@@ -456,13 +469,13 @@ if __name__ == "__main__":
         print("wait")
 
     else:    
-        env = Mockturtle_env(env_config=env_config)
+        env = Mockturtle_Env(env_config=env_config)
         env.reset()
         print("checking env")
         check_env(env=env)
         print("check successfull")
 
-        env = Mockturtle_env(env_config=env_config)
+        env = Mockturtle_Env(env_config=env_config)
         env.reset()
 
         print("test all actions")
