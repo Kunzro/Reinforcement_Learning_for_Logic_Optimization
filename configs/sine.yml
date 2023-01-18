@@ -6,7 +6,7 @@ circuit_name: sine
 target_delay: 3800
 
 # standard cell library mapping
-library_file: libraries/asap7_short.genlib
+library_file: libraries/asap7.lib
 
 # available optimizaction actions
 optimizations:
@@ -35,14 +35,23 @@ optimizations:
     - resub
     - resub -z
     - balance
+    # - resub -K 8
+    - dc2
+    - ifraig
+    - dch -f; dc2
+    - dch -f; if -g
+    - if -g
 
 # only for Mockturtle relevant
 mockturtle:
   graph_type: mig
 
 # agent training parameters
+env: Abc_Env  # Abc_Env or Mockturtle_Env
+special_tag: lstm_replication
 train_iterations: 50
 delay_reward_factor: 10
-use_graph: False
+use_graph: True
+use_previous_action: True
 preprocessor_pref: null # null = no preprocessing
-MAX_STEPS: 50
+MAX_STEPS: 40

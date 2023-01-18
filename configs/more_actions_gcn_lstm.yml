@@ -1,5 +1,5 @@
 # agent training parameters
-experiment_name: basic_actions_random
+experiment_name: more_actions_gcn_lstm
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
 train_iterations: 50
@@ -14,8 +14,8 @@ use_previous_action: True
 
 # the circuits for which to run the experiments for
 circuits:
-  # - adder
-  # - bar
+  - adder
+  - bar
   - log2
   - max
   - multiplier
@@ -54,12 +54,12 @@ optimizations:
     - resub -z
     - balance
     # - resub -K 8  # same as resub ???
-    # - dc2
-    # - ifraig
-    # - dch -f; dc2
-    # - dch -f; if -g
-    # - if -g
-    # - map -D ; strash # delay has to be appended in the script for each circuit
+    - dc2
+    - ifraig
+    - dch -f; dc2
+    - dch -f; if -g
+    - if -g
+    - map -D ; strash # delay has to be appended in the script for each circuit
 
 # only for Mockturtle relevant
 mockturtle:

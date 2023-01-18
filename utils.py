@@ -9,7 +9,7 @@ from ray.tune.logger import UnifiedLogger
 def logger_creator(config):
     logger_config = config["logger_config"]
     date_str = datetime.today().strftime("%Y-%m-%d-%H-%M")
-    logdir_prefix = "{}_{}_{}_{}_{}".format(logger_config["experiment_name"], logger_config["circuit_name"], logger_config["env"], "PPO", date_str)
+    logdir_prefix = "{}_{}_{}_{}_{}".format(logger_config["experiment_name"], logger_config["circuit_name"], logger_config["env"], logger_config["algorithm"], date_str)
     logdir = os.path.join(os.getcwd(), "results", logdir_prefix)
     os.makedirs(logdir, exist_ok=False)
     return UnifiedLogger(config, logdir, loggers=None)

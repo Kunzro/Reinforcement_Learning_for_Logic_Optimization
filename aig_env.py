@@ -220,7 +220,7 @@ class Abc_Env(Env):
         Abc_Start()
         self.pAbc = Abc_FrameGetGlobalFrame()
         library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
-        Cmd_CommandExecute(self.pAbc, ('read_lib -v' + library_dir).encode('UTF-8'))   # load library file
+        Cmd_CommandExecute(self.pAbc, ('read_lib -v ' + library_dir).encode('UTF-8'))   # load library file
         self.reset()
 
         # define action and observation spaces
@@ -256,8 +256,8 @@ class Abc_Env(Env):
             node_features = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = node_features.shape[0]*4
-                self.max_edges = edge_attr.shape[0]*4
+                self.max_nodes = int(node_features.shape[0]*4)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*4)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_nodes, node_data_size)
@@ -379,7 +379,9 @@ class Abc_Env(Env):
         if self.trmalloc:
             strash_snapshot_end = tracemalloc.take_snapshot()
         strash_end = time.time()
+        # print(f"RUNNING: prev actions: {self.logger.current_actions}, current action: {action}")
         Cmd_CommandExecute(self.pAbc, self.env_config['optimizations']['aig'][action].encode('UTF-8'))
+        # print(f"COMPLETED: prev actions: {self.logger.current_actions}, current action: {action}")
         if self.trmalloc:
             command_snapshot_end = tracemalloc.take_snapshot()
             strash_stats = strash_snapshot_end.compare_to(strash_snapshot_start, 'lineno')
