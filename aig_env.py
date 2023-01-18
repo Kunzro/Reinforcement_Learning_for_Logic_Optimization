@@ -10,8 +10,8 @@ import os
 import tracemalloc
 from extern.RLfLO_mockturtle.build import Mockturtle_api
 
-from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNodeFeatures_wrapper,
-                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOGetObjTypes_wrapper, Abc_RLfLOMapGetAreaDelay, Abc_Start, Abc_Stop,
+from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetNodeFeatures_wrapper,
+                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOMapGetAreaDelay_wrapper, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
 
 class Mockturtle_Env(Env):
@@ -220,7 +220,7 @@ class Abc_Env(Env):
         Abc_Start()
         self.pAbc = Abc_FrameGetGlobalFrame()
         library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
-        Cmd_CommandExecute(self.pAbc, ('read ' + library_dir).encode('UTF-8'))   # load library file
+        Cmd_CommandExecute(self.pAbc, ('read_lib -v' + library_dir).encode('UTF-8'))   # load library file
         self.reset()
 
         # define action and observation spaces
@@ -278,9 +278,9 @@ class Abc_Env(Env):
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
         if self.trmalloc:
             obs_snapshot_end = tracemalloc.take_snapshot()
             obs_stats = obs_snapshot_end.compare_to(obs_snapshot_start, 'lineno')
@@ -341,9 +341,9 @@ class Abc_Env(Env):
         Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))               # load circuit
         Cmd_CommandExecute(self.pAbc, b'strash')
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
         self.delay = self.c_delay3.value
         self.area = self.c_area3.value
         self.num_nodes = self.c_num_nodes.value
