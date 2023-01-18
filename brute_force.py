@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
-from multiprocessing import Pool
+from multiprocessing import Pool, TimeoutError
+from concurrent.futures import ProcessPoolExecutor
 import os
 import numpy as np
 
@@ -12,7 +13,7 @@ def perform_rollout(actions):
     env = Abc_Env(env_config=experiment_config)
     for action in actions:
         env.step(action)
-    env.MAX_STEPS = env.step_num    # make sure the results get logged
+    env.horizon = env.step_num    # make sure the results get logged
     env.logger.log_episode()
     return [env.logger.rewards[0], env.logger.areas[0], env.logger.delays[0], env.logger.actions[0]]
 
@@ -51,34 +52,52 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(args.config_file, 'r') as file:
-        experiment_config = yaml.safe_load(file)
+        experiment_configs = yaml.safe_load(file)
 
-    date_str = datetime.today().strftime("%Y-%m-%d-%H-%M")
-    logdir_prefix = "{}_{}_{}_{}".format(experiment_config["env"], experiment_config["circuit_name"], "BF", date_str)
-    if "special_tag" in experiment_config:
-        logdir_prefix += "_{}".format(experiment_config["special_tag"])
+    for circuit in experiment_configs["circuits"]:
+        
+        experiment_config = experiment_configs.copy()
+        experiment_config["optimizations"] = experiment_configs["optimizations"].copy()
+        del experiment_config["circuits"]
+        del experiment_config["target_delays"]
+        del experiment_config["circuit_files"]
+        experiment_config["circuit_file"] = experiment_configs["circuit_files"][circuit]
+        experiment_config["circuit_name"] = circuit
+        experiment_config["target_delay"] = experiment_configs["target_delays"][circuit]
+        experiment_config["mode"] = args.mode
+        if "map -D ; strash" in experiment_config["optimizations"]["aig"]:
+            experiment_config["optimizations"]["aig"] = experiment_config["optimizations"]["aig"].copy()
+            map_index = experiment_config["optimizations"]["aig"].index("map -D ; strash")
+            experiment_config["optimizations"]["aig"][map_index] = "map -D {}; strash".format(experiment_config["target_delay"])
 
-    num_actions = len(experiment_config["optimizations"]["aig"])
-    if args.mode == 'all':
-        assert hasattr(args, 'seq_len'), "you have to specify the seq_len for the all mode!"
-        logdir_prefix += f"_all_{args.seq_len}"
-        trajectories = trajectories_of_len(num_actions, args.seq_len)
-    elif args.mode == 'random':
-        assert hasattr(args, 'num_rand'), "you have to specify the num_rand for the random mode!"
-        logdir_prefix += f"_random_{args.num_rand}"
-        trajectories = random_trajectories(num_actions, experiment_config['MAX_STEPS'], args.num_rand)
 
-    home_dir = os.getcwd()
-    logdir = os.path.join(home_dir, "results", logdir_prefix)
-    os.makedirs(logdir, exist_ok=False)
+        date_str = datetime.today().strftime("%Y-%m-%d-%H-%M")
+        num_actions = len(experiment_config["optimizations"]["aig"])
+        if args.mode == 'all':
+            assert hasattr(args, 'seq_len'), "you have to specify the seq_len for the all mode!"
+            mode_str = f"Max_Seq_len_{args.seq_len}"
+            experiment_config["seq_len"] = args.seq_len
+            trajectories = trajectories_of_len(num_actions, args.seq_len)
+        elif args.mode == 'random':
+            assert hasattr(args, 'num_rand'), "you have to specify the num_rand for the random mode!"
+            mode_str = f"Num_Rand_Traj_{args.num_rand}"
+            experiment_config["num_rand"] = args.num_rand
+            trajectories = random_trajectories(num_actions, experiment_config['horizon'], args.num_rand)
 
-    p = Pool(36)
-    res = p.map_async(perform_rollout, trajectories)
-    p.close()
-    p.join()
-    results = np.array(res.get())
-    save_results(results, logdir)
+        logdir_prefix = "{}_{}_{}_{}_{}".format(experiment_config["experiment_name"], experiment_config["circuit_name"], experiment_config["env"], mode_str, date_str)
+        home_dir = os.getcwd()
+        logdir = os.path.join(home_dir, "results", logdir_prefix)
+        os.makedirs(logdir, exist_ok=False)
 
-    config_dir = os.path.join(logdir, "experiment_config.yml")
-    with open(config_dir, 'w') as file:
-        yaml.safe_dump(experiment_config, file, default_flow_style=False)
+        num_processes = 40
+        p = Pool(num_processes)
+        res = p.map(perform_rollout, trajectories)
+        p.close()
+        p.join()
+        results = np.array(res.get())
+        save_results(results, logdir)
+        del p
+
+        config_dir = os.path.join(logdir, "experiment_config.yml")
+        with open(config_dir, 'w') as file:
+            yaml.safe_dump(experiment_config, file, default_flow_style=False)

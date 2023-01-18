@@ -1,5 +1,5 @@
 # agent training parameters
-experiment_name: basic_actions_random
+experiment_name: basic_actions_gcn_lstm
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
 train_iterations: 50
@@ -14,8 +14,8 @@ use_previous_action: True
 
 # the circuits for which to run the experiments for
 circuits:
-  # - adder
-  # - bar
+  - adder
+  - bar
   - log2
   - max
   - multiplier

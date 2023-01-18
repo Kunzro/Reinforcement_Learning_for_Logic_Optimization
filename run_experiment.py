@@ -3,6 +3,7 @@ import os
 
 import yaml
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.a2c import A2CConfig
 
 from aig_env import Abc_Env, Mockturtle_Env
 from utils import MyCallbacks, logger_creator
@@ -34,12 +35,18 @@ for circuit in experiment_configs["circuits"]:
     experiment_config["circuit_name"] = circuit
     experiment_config["target_delay"] = experiment_configs["target_delays"][circuit]
     if "map -D ; strash" in experiment_config["optimizations"]["aig"]:
+        experiment_config["optimizations"]["aig"] = experiment_config["optimizations"]["aig"].copy()
         map_index = experiment_config["optimizations"]["aig"].index("map -D ; strash")
         experiment_config["optimizations"]["aig"][map_index] = "map -D {}; strash".format(experiment_config["target_delay"])
 
-    conf = PPOConfig()
+    if experiment_config["algorithm"] == "A2C":
+        conf = A2CConfig()
+        conf = conf.training(microbatch_size=experiment_config["microbatch_size"])
+    elif experiment_config["algorithm"] == "PPO":
+        conf = PPOConfig()
+        conf = conf.training(sgd_minibatch_size = experiment_config["sgd_minibatch_size"])
+
     conf = conf.training(
-        sgd_minibatch_size = experiment_config["sgd_minibatch_size"],
         train_batch_size = experiment_config["train_batch_size"],
         model={
             "custom_model": GCN,
@@ -68,17 +75,17 @@ for circuit in experiment_configs["circuits"]:
     conf = conf.callbacks(callbacks_class=MyCallbacks)
     conf = conf.resources(num_gpus=1)
     conf = conf.experimental(_disable_preprocessor_api=True)
-    ppo_algo = conf.build()
+    algo = conf.build()
 
     for i in range(experiment_config["train_iterations"]):
-        result = ppo_algo.train()
+        result = algo.train()
 
     # save stats and the used config
-    results_dir = os.path.join(ppo_algo.logdir, "results.npz")
-    save_results(ppo_algo, results_dir)
+    results_dir = os.path.join(algo.logdir, "results.npz")
+    save_results(algo, results_dir)
 
-    config_dir = os.path.join(ppo_algo.logdir, "experiment_config.yml")
+    config_dir = os.path.join(algo.logdir, "experiment_config.yml")
     with open(config_dir, 'w') as file:
         yaml.safe_dump(experiment_config, file, default_flow_style=False)
 
-    del ppo_algo
+    del algo

@@ -1,5 +1,5 @@
 # agent training parameters
-experiment_name: basic_actions_random
+experiment_name: basic_actions_random_test
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
 train_iterations: 50
@@ -9,19 +9,19 @@ microbatch_size: 40
 num_rollout_workers: 20
 horizon: 40
 delay_reward_factor: 10
-use_graph: True
-use_previous_action: True
+use_graph: False
+use_previous_action: False
 
 # the circuits for which to run the experiments for
 circuits:
-  # - adder
+  - adder
   # - bar
-  - log2
-  - max
-  - multiplier
-  - sine
-  - sqrt
-  - square
+  # - log2
+  # - max
+  # - multiplier
+  # - sine
+  # - sqrt
+  # - square
 
 # standard cell library mapping
 library_file: libraries/asap7.lib
