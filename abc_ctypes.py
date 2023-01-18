@@ -623,21 +623,37 @@ Abc_RLfLOGetNumObjs = getattr(lib, "Abc_RLfLOGetNumObjs")
 Abc_RLfLOGetNumObjs.argtyoes = [POINTER(Abc_Frame_t), POINTER(c_int)]
 Abc_RLfLOGetNumObjs.restype = None
 
-Abc_RLfLOPrintObjNum2x = getattr(lib, "Abc_RLfLOPrintObjNum2x")
-Abc_RLfLOPrintObjNum2x.argtypes = [POINTER(Abc_Frame_t)]
-Abc_RLfLOPrintObjNum2x.restype = None
-
-Abc_RLfLOSizeofInt = getattr(lib, "Abc_RLfLOSizeofInt")
-Abc_RLfLOSizeofInt.argtypes = [POINTER(c_size_t)]
-Abc_RLfLOSizeofInt.restype = None
-
-Abc_RLfLOMapGetAreaDelay = getattr(lib, "Abc_RLfLOMapGetAreaDelay")
-Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int]
+Abc_RLfLOMapGetAreaDelay = getattr(lib, "Abc_RLfLOMapGetAreaDelay") # Abc_RLfLOMapGetAreaDelay( Abc_Frame_t * pAbc, float * pArea, float * pDelay, int fAreaOnly, int useDelayTarget, double DelayTargetArg, int nTreeCRatio, int fUseWireLoads, int getDelays, double * pDelays );
+Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int, c_int, np.ctypeslib.ndpointer(dtype=c_double, ndim=1, flags='C_CONTIGUOUS') ]
 Abc_RLfLOMapGetAreaDelay.restype = None
 
 Abc_RLfLOGetNodeFeatures = getattr(lib, "Abc_RLfLOGetNodeFeatures")
 Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_float, ndim=2, flags='C_CONTIGUOUS'), c_size_t, c_size_t]
 Abc_RLfLOGetNodeFeatures.restype = None
+
+Abc_RLfLONtkRefactor = getattr(lib, "Abc_RLfLONtkRefactor")
+Abc_RLfLONtkRefactor.argtypes = [POINTER(Abc_Frame_t), c_int, c_int, c_int, c_int, c_int, c_int, c_int] # ( Abc_Frame_t * pAbc, int Id, int nNodeSizeMax, int nConeSizeMax, int fUpdateLevel, int fUseZeros, int fUseDcs, int fVerbose );
+Abc_RLfLONtkRefactor.restype = c_int
+
+Abc_RLfLONtkRewrite = getattr(lib, "Abc_RLfLONtkRewrite")
+Abc_RLfLONtkRewrite.argtypes = [POINTER(Abc_Frame_t), c_int, c_int, c_int, c_int, c_int, c_int] # ( Abc_Frame_t * pAbc, int Id, int fUpdateLevel, int fUseZeros, int fVerbose, int fVeryVerbose, int fPlaceEnable );
+Abc_RLfLONtkRewrite.restype = c_int
+
+Abc_RLfLONtkResubstitute = getattr(lib, "Abc_RLfLONtkResubstitute")
+Abc_RLfLONtkResubstitute.argtypes = [POINTER(Abc_Frame_t), c_int, c_int, c_int, c_int, c_int, c_int, c_int] #( Abc_Frame_t * pAbc, int Id ,int nCutMax, int nStepsMax, int nLevelsOdc, int fUpdateLevel, int fVerbose, int fVeryVerbose );
+Abc_RLfLONtkResubstitute.restype = c_int
+
+def Abc_RLfLOMapGetAreaDelay_wrapper(pAbc, c_area, c_delay, fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays):
+    if getDelays:
+        num_objs = c_int()
+        Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
+        arr =  np.ones( num_objs.value, dtype=c_double ) * (-10)
+        Abc_RLfLOMapGetAreaDelay(pAbc, byref(c_area), byref(c_delay), fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays, arr)
+        return arr
+    else:
+        arr = np.empty(0,dtype=c_double)
+        Abc_RLfLOMapGetAreaDelay(pAbc, byref(c_area), byref(c_delay), fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays, arr)
+        return
 
 def Abc_RLfLOGetObjTypes_wrapper(pAbc):
     num_objs = c_int()
