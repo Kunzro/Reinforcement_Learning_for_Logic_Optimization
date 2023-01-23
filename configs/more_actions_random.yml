@@ -21,7 +21,7 @@ circuits:
   # - multiplier
   # - sine
   - sqrt
-  # - square
+  - square
 
 # standard cell library mapping
 library_file: libraries/asap7.lib
@@ -59,7 +59,7 @@ optimizations:
     - dch -f; dc2
     - dch -f; if -g
     - if -g
-    - map -D ; strash # delay has to be appended in the script for each circuit
+    - map -D ; strash; strash # delay has to be appended in the script for each circuit
 
 # only for Mockturtle relevant
 mockturtle:

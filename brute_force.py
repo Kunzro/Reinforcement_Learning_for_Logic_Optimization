@@ -58,6 +58,7 @@ if __name__ == "__main__":
         
         experiment_config = experiment_configs.copy()
         experiment_config["optimizations"] = experiment_configs["optimizations"].copy()
+        experiment_config["optimizations"]["aig"] = experiment_configs["optimizations"]["aig"].copy()
         del experiment_config["circuits"]
         del experiment_config["target_delays"]
         del experiment_config["circuit_files"]
@@ -65,10 +66,9 @@ if __name__ == "__main__":
         experiment_config["circuit_name"] = circuit
         experiment_config["target_delay"] = experiment_configs["target_delays"][circuit]
         experiment_config["mode"] = args.mode
-        if "map -D ; strash" in experiment_config["optimizations"]["aig"]:
-            experiment_config["optimizations"]["aig"] = experiment_config["optimizations"]["aig"].copy()
-            map_index = experiment_config["optimizations"]["aig"].index("map -D ; strash")
-            experiment_config["optimizations"]["aig"][map_index] = "map -D {}; strash".format(experiment_config["target_delay"])
+        if "map -D ; strash; strash" in experiment_config["optimizations"]["aig"]:
+            map_index = experiment_config["optimizations"]["aig"].index("map -D ; strash; strash")
+            experiment_config["optimizations"]["aig"][map_index] = "map -D {}; strash; strash".format(experiment_config["target_delay"])
 
 
         date_str = datetime.today().strftime("%Y-%m-%d-%H-%M")
@@ -94,7 +94,7 @@ if __name__ == "__main__":
         res = p.map(perform_rollout, trajectories)
         p.close()
         p.join()
-        results = np.array(res.get())
+        results = np.array(res)
         save_results(results, logdir)
         del p
 

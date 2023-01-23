@@ -2,7 +2,7 @@
 experiment_name: more_actions_gcn_lstm
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
-train_iterations: 50
+train_iterations: 250
 train_batch_size: 800 # take care that train batch size is a multiple of num_rollout_workers*horizon
 sgd_minibatch_size: 80 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
 microbatch_size: 40
@@ -59,7 +59,7 @@ optimizations:
     - dch -f; dc2
     - dch -f; if -g
     - if -g
-    - map -D ; strash # delay has to be appended in the script for each circuit
+    - map -D ; strash; strash # delay has to be appended in the script for each circuit
 
 # only for Mockturtle relevant
 mockturtle:

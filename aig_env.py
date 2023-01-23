@@ -256,8 +256,8 @@ class Abc_Env(Env):
             node_features = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*4)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*4)
+                self.max_nodes = int(node_features.shape[0]*3)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*3)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_nodes, node_data_size)
@@ -278,9 +278,9 @@ class Abc_Env(Env):
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area2, self.c_delay2, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area3, self.c_delay3, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
         if self.trmalloc:
             obs_snapshot_end = tracemalloc.take_snapshot()
             obs_stats = obs_snapshot_end.compare_to(obs_snapshot_start, 'lineno')
@@ -341,9 +341,9 @@ class Abc_Env(Env):
         Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))               # load circuit
         Cmd_CommandExecute(self.pAbc, b'strash')
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area2), byref(self.c_delay2), 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, byref(self.c_area3), byref(self.c_delay3), 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area2, self.c_delay2, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area3, self.c_delay3, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
         self.delay = self.c_delay3.value
         self.area = self.c_area3.value
         self.num_nodes = self.c_num_nodes.value
