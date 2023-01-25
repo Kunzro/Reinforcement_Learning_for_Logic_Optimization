@@ -10,7 +10,7 @@ import os
 import tracemalloc
 from extern.RLfLO_mockturtle.build import Mockturtle_api
 
-from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetNodeFeatures_wrapper,
+from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNodeFeatures_wrapper,
                         Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOMapGetAreaDelay_wrapper, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
 
@@ -209,11 +209,7 @@ class Abc_Env(Env):
 
         # initialize variables to be used to get metrices from ABC
         self.c_delay = c_float()
-        self.c_delay2 = c_float()
-        self.c_delay3 = c_float()
         self.c_area = c_float()
-        self.c_area2 = c_float()
-        self.c_area3 = c_float()
         self.c_num_nodes = c_int()
         self.c_num_levels = c_int()
 
@@ -256,8 +252,8 @@ class Abc_Env(Env):
             node_features = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*3)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*3)
+                self.max_nodes = int(node_features.shape[0]*2.5)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*2.5)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_nodes, node_data_size)
@@ -278,17 +274,22 @@ class Abc_Env(Env):
         if self.trmalloc:
             obs_snapshot_start = tracemalloc.take_snapshot() 
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area2, self.c_delay2, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area3, self.c_delay3, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        if "use_builtin_map" in self.env_config and self.env_config["use_builtin_map"]:
+            Cmd_CommandExecute(self.pAbc, (f"map -D {self.target_delay}").encode('UTF-8'))
+            Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0)
+            Cmd_CommandExecute(self.pAbc, b'strash')
+        else:
+            # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
+            # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+            Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
         if self.trmalloc:
             obs_snapshot_end = tracemalloc.take_snapshot()
             obs_stats = obs_snapshot_end.compare_to(obs_snapshot_start, 'lineno')
             print('\n' * 2, "OBS STATS:")
             for stat in obs_stats[:10]:
                 print(stat)
-        self.delay = self.c_delay3.value
-        self.area = self.c_area3.value
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
 
@@ -342,10 +343,10 @@ class Abc_Env(Env):
         Cmd_CommandExecute(self.pAbc, b'strash')
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
         # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
-        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area2, self.c_delay2, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
-        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area3, self.c_delay3, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
-        self.delay = self.c_delay3.value
-        self.area = self.c_area3.value
+        # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
 
@@ -431,21 +432,13 @@ if __name__ == "__main__":
         for j in range(10):
             num_nodes = []
             areas = []
-            areas2 = []
-            areas3 = []
             delays = []
-            delays2 = []
-            delays3 = []
             for i in range(40):
                 res = env.step(env.action_space.sample())
                 #print(res[2])
                 num_nodes.append(res[0]["states"][2])
                 areas.append(res[0]["states"][1])
-                areas2.append(env.c_area2.value)
-                areas3.append(env.c_area3.value)
                 delays.append(res[0]["states"][0])
-                delays2.append(env.c_delay2.value)
-                delays3.append(env.c_delay3.value)
             env.reset()
             num_nodes = np.array(num_nodes)
             num_nodes_sorted = np.sort(num_nodes)[::-1]
@@ -453,20 +446,9 @@ if __name__ == "__main__":
             print("areas:")
             print(areas)
             print()
-            print("areas2:")
-            print(areas2)
-            print()
-            print("areas3:")
-            print(areas3)
-            print()
             print("delay:")
             print(delays)
             print()
-            print("delay2:")
-            print(delays2)
-            print()
-            print("delay3:")
-            print(delays3)
             print(np.all(num_nodes == num_nodes_sorted))
         print("wait")
 
