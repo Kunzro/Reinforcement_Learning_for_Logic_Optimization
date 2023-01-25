@@ -596,7 +596,7 @@ Abc_FrameReadNtk.argtypes = [POINTER(Abc_Frame_t)]
 Abc_FrameReadNtk.restype = POINTER(Abc_Ntk_t)
 
 Abc_RLfLOGetMaxDelayTotalArea = getattr(lib, "Abc_RLfLOGetMaxDelayTotalArea")
-Abc_RLfLOGetMaxDelayTotalArea.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_int, c_int, c_int]
+Abc_RLfLOGetMaxDelayTotalArea.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int]
 Abc_RLfLOGetMaxDelayTotalArea.restype = None
 
 Abc_RLfLOGetNumNodesAndLevels = getattr(lib, "Abc_RLfLOGetNumNodesAndLevels")
@@ -642,6 +642,14 @@ Abc_RLfLONtkRewrite.restype = c_int
 Abc_RLfLONtkResubstitute = getattr(lib, "Abc_RLfLONtkResubstitute")
 Abc_RLfLONtkResubstitute.argtypes = [POINTER(Abc_Frame_t), c_int, c_int, c_int, c_int, c_int, c_int, c_int] #( Abc_Frame_t * pAbc, int Id ,int nCutMax, int nStepsMax, int nLevelsOdc, int fUpdateLevel, int fVerbose, int fVeryVerbose );
 Abc_RLfLONtkResubstitute.restype = c_int
+
+Abc_RLfLOBalanceNode = getattr(lib, "Abc_RLfLOBalanceNode")
+Abc_RLfLOBalanceNode.argtypes = [POINTER(Abc_Frame_t), c_int, c_int, c_int]
+Abc_RLfLOBalanceNode.restype = None
+
+Abc_RLfLONtkDesub = getattr(lib, "Abc_RLfLONtkDesub")
+Abc_RLfLONtkDesub.argtypes =  [POINTER(Abc_Frame_t), c_int]
+Abc_RLfLONtkDesub.restype = None
 
 def Abc_RLfLOMapGetAreaDelay_wrapper(pAbc, c_area, c_delay, fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays):
     if getDelays:
@@ -788,11 +796,6 @@ if __name__ == "__main__":
         Cmd_CommandExecute(pAbc, b'strash')
         #Cmd_CommandExecute(pAbc, b'map')
 
-        #Abc_RLfLOPrintNodeIds(pAbc)
-        size = c_size_t()
-        Abc_RLfLOSizeofInt(byref(size))
-        print(f"The size of integers is: {size}")
-
         num_objs = c_int()
         Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
         print(f"the number of objects are: {num_objs}")
@@ -807,7 +810,5 @@ if __name__ == "__main__":
         edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=pAbc)
         print(f"the edge_index are: {edge_index}")
         print(f"the edge_attr are: {edge_attr}")
-
-        Abc_RLfLOPrintObjNum2x(pAbc)
 
         Abc_Stop()
