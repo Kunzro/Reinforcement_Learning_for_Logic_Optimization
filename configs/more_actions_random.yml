@@ -11,15 +11,16 @@ horizon: 40
 delay_reward_factor: 10
 use_graph: False
 use_previous_action: False
+use_builtin_map: False
 
 # the circuits for which to run the experiments for
 circuits:
-  # - adder
-  # - bar
-  # - log2
-  # - max
-  # - multiplier
-  # - sine
+  - adder
+  - bar
+  - log2
+  - max
+  - multiplier
+  - sine
   - sqrt
   - square
 
