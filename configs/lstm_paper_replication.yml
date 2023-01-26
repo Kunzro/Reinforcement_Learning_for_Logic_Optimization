@@ -1,0 +1,92 @@
+# agent training parameters
+experiment_name: lstm_paper_replication
+env: Abc_Env  # Abc_Env or Mockturtle_Env
+algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
+train_iterations: 50
+train_batch_size: 800 # take care that train batch size is a multiple of num_rollout_workers*horizon
+sgd_minibatch_size: 80 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
+microbatch_size: 40
+num_rollout_workers: 20
+horizon: 40
+delay_reward_factor: 10
+use_graph: True
+use_previous_action: True
+use_builtin_map: True
+
+# the circuits for which to run the experiments for
+circuits:
+  # - adder
+  # - bar
+  # - log2
+  # - max
+  # - multiplier
+  # - sine
+  - sqrt
+  - square
+
+# standard cell library mapping
+library_file: libraries/asap7.lib
+
+# available optimizaction actions
+optimizations:
+  mig:
+    - rewrite
+    - rewrite -azg
+    - rewrite -udc
+    - rewrite -pd
+    - rewrite -azg -udc
+    - rewrite -azg -pd
+    - rewrite -udc -pd
+    - rewrite -azg -udc -pd
+    - balance
+    - balance -c
+    #- refactor
+    #- refactor -azg
+    #- refactor -udc
+    #- refactor -azg -udc
+    - resub
+    - resub -pd
+  aig:
+    - rewrite
+    - rewrite -z
+    - refactor
+    - refactor -z
+    - resub
+    - resub -z
+    - balance
+    # - balance -d # might be good
+    # - resub -K 8  # same as resub ???
+    - dc2
+    - ifraig
+    - dch -f
+    - if -g
+    # - map -D ; strash; strash # delay has to be appended in the script for each circuit
+
+# only for Mockturtle relevant
+mockturtle:
+  graph_type: mig
+
+# delay targets and circuit file locations
+target_delays:
+  adder: 2000
+  bar: 800
+  div: 75000
+  hype: 1000000
+  log2: 7500
+  max: 4000
+  multiplier: 4000
+  sine: 3800
+  sqrt: 170000
+  square: 2200
+
+circuit_files:
+  adder: circuits/adder.v
+  bar: circuits/bar.v
+  div: circuits/div.v
+  hype: circuits/hypo.v
+  log2: circuits/log2.v
+  max: circuits/max.v
+  multiplier: circuits/multiplier.v
+  sine: circuits/sine.v
+  sqrt: circuits/sqrt.v
+  square: circuits/square.v
