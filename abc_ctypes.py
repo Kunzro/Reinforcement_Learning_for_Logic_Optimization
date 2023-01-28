@@ -673,8 +673,8 @@ def Abc_RLfLOGetObjTypes_wrapper(pAbc):
 def Abc_RLfLOGetNodeFeatures_wrapper(pAbc):
     num_objs = c_int()
     Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-    types = np.ones( (num_objs.value), dtype=c_float ) * (-1)
-    num_inv = np.ones( (num_objs.value), dtype=c_float ) * (-1)
+    types = np.ones( num_objs.value, dtype=c_float ) * (-1)
+    num_inv = np.ones( num_objs.value, dtype=c_float ) * (-1)
     Abc_RLfLOGetNodeFeatures(pAbc, types, *types.shape, num_inv, *num_inv.shape )
     return types, num_inv
 
