@@ -624,11 +624,11 @@ Abc_RLfLOGetNumObjs.argtyoes = [POINTER(Abc_Frame_t), POINTER(c_int)]
 Abc_RLfLOGetNumObjs.restype = None
 
 Abc_RLfLOMapGetAreaDelay = getattr(lib, "Abc_RLfLOMapGetAreaDelay") # Abc_RLfLOMapGetAreaDelay( Abc_Frame_t * pAbc, float * pArea, float * pDelay, int fAreaOnly, int useDelayTarget, double DelayTargetArg, int nTreeCRatio, int fUseWireLoads, int getDelays, double * pDelays );
-Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int, c_int, np.ctypeslib.ndpointer(dtype=c_double, ndim=1, flags='C_CONTIGUOUS') ]
+Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POINTER(c_float), c_int, c_int, c_double, c_int, c_int, c_int, np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS') ]
 Abc_RLfLOMapGetAreaDelay.restype = None
 
 Abc_RLfLOGetNodeFeatures = getattr(lib, "Abc_RLfLOGetNodeFeatures")
-Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_float, ndim=2, flags='C_CONTIGUOUS'), c_size_t, c_size_t]
+Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS'), c_size_t, np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS'), c_size_t]
 Abc_RLfLOGetNodeFeatures.restype = None
 
 Abc_RLfLONtkRefactor = getattr(lib, "Abc_RLfLONtkRefactor")
@@ -655,33 +655,34 @@ def Abc_RLfLOMapGetAreaDelay_wrapper(pAbc, c_area, c_delay, fAreaOnly, useDelayT
     if getDelays:
         num_objs = c_int()
         Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-        arr =  np.ones( num_objs.value, dtype=c_double ) * (-10)
+        arr =  np.ones( num_objs.value, dtype=c_float ) * (-1)
         Abc_RLfLOMapGetAreaDelay(pAbc, byref(c_area), byref(c_delay), fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays, arr)
         return arr
     else:
-        arr = np.empty(0,dtype=c_double)
+        arr = np.empty(0,dtype=c_float)
         Abc_RLfLOMapGetAreaDelay(pAbc, byref(c_area), byref(c_delay), fAreaOnly, useDelayTarget, DelayTarget, nTreeCRatio, fUseWireLoads, getDelays, arr)
         return
 
 def Abc_RLfLOGetObjTypes_wrapper(pAbc):
     num_objs = c_int()
     Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-    arr = np.ones( (num_objs.value, 1), dtype=c_int ) * (-10)
+    arr = np.ones( (num_objs.value, 1), dtype=c_int ) * (-1)
     Abc_RLfLOGetObjTypes(pAbc, arr)
     return arr
 
 def Abc_RLfLOGetNodeFeatures_wrapper(pAbc):
     num_objs = c_int()
     Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-    arr = np.ones( (num_objs.value, 2), dtype=c_float ) * (-10)
-    Abc_RLfLOGetNodeFeatures(pAbc, arr, *arr.shape)
-    return arr
+    types = np.ones( (num_objs.value), dtype=c_float ) * (-1)
+    num_inv = np.ones( (num_objs.value), dtype=c_float ) * (-1)
+    Abc_RLfLOGetNodeFeatures(pAbc, types, *types.shape, num_inv, *num_inv.shape )
+    return types, num_inv
 
 def Abc_RLfLOGetEdges_wrapper(pAbc):
     num_edges = c_int()
     Abc_RLfLOGetNumEdges(pAbc, byref(num_edges))
-    edge_index = np.ones( (2, num_edges.value), dtype=c_long ) * (-5)
-    edge_attr = np.ones( (num_edges.value, 1), dtype=c_float ) * (-6)
+    edge_index = np.ones( (2, num_edges.value), dtype=c_long ) * (-1)
+    edge_attr = np.ones( (num_edges.value, 1), dtype=c_float ) * (-1)
     Abc_RLfLOGetEdges(pAbc, edge_index, num_edges, edge_attr)
     return edge_index, edge_attr
 
