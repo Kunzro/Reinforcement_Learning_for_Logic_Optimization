@@ -1,18 +1,29 @@
+import os
+import time
+import tracemalloc
 from ctypes import byref, c_float, c_int
-from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils import check_env
+
 import numpy as np
+import torch
 import yaml
 from gym import Env, spaces
-from logger import RLfLO_logger
-import time
-import os
-import tracemalloc
-from extern.RLfLO_mockturtle.build import Mockturtle_api
+from ray.rllib.utils import check_env
+from ray.rllib.utils.spaces.repeated import Repeated
+from torch.nn.functional import one_hot
 
-from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOGetEdges_wrapper, Abc_RLfLOGetMaxDelayTotalArea, Abc_RLfLOGetNodeFeatures_wrapper,
-                        Abc_RLfLOGetNumNodesAndLevels, Abc_RLfLOMapGetAreaDelay_wrapper, Abc_Start, Abc_Stop,
+from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOBalanceNode,
+                        Abc_RLfLOGetEdges_wrapper,
+                        Abc_RLfLOGetMaxDelayTotalArea,
+                        Abc_RLfLOGetNodeFeatures_wrapper,
+                        Abc_RLfLOGetNumNodesAndLevels,
+                        Abc_RLfLOMapGetAreaDelay_wrapper, Abc_RLfLONtkDesub,
+                        Abc_RLfLONtkRefactor, Abc_RLfLONtkResubstitute,
+                        Abc_RLfLONtkRewrite, Abc_Start, Abc_Stop,
                         Cmd_CommandExecute)
+from extern.RLfLO_mockturtle.build import Mockturtle_api
+from logger import RLfLO_logger
+from utils import onehot_encode
+
 
 class Mockturtle_Env(Env):
 
@@ -229,7 +240,7 @@ class Abc_Env(Env):
         if self.use_previous_action:
             self.observation_space["previous_action"] = spaces.Box(low=0, high=len(env_config["optimizations"]["mig"])+1, shape=(1,), dtype=np.int32)
         if self.use_graph:
-            self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 2), dtype=np.float32)
+            self.observation_space["node_features"] = spaces.Box(0, 10, shape=(self.max_nodes, 5), dtype=np.float32)
             self.observation_space["edge_index"] = spaces.Box(0, 100000, shape=(2, self.max_edges), dtype=np.int64)
             self.observation_space["edge_attr"] = spaces.Box(0, 10, shape=(self.max_edges, 1), dtype=np.float32)
             self.observation_space["node_data_size"] = spaces.Box(1, self.max_nodes, shape=(1,), dtype=np.int32)
@@ -249,8 +260,10 @@ class Abc_Env(Env):
         obs = {}
 
         if self.use_graph:
-            node_features = self._get_node_features()
+            types, num_inv = self._get_node_features()
             edge_index, edge_attr = self._get_edge_index()
+            # onehot encode types
+            node_features = np.concatenate((onehot_encode(types, max=3), num_inv[..., np.newaxis]), axis=1)
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
                 self.max_nodes = int(node_features.shape[0]*2.5)  # 3 worked for log2
                 self.max_edges = int(edge_attr.shape[0]*2.5)
@@ -301,8 +314,8 @@ class Abc_Env(Env):
         return {}
 
     def _get_node_features(self):
-        node_features = Abc_RLfLOGetNodeFeatures_wrapper(pAbc=self.pAbc)
-        return node_features
+        types, num_inv = Abc_RLfLOGetNodeFeatures_wrapper(pAbc=self.pAbc)
+        return types, num_inv
 
     def _get_edge_index(self):
         edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(pAbc=self.pAbc)
@@ -412,6 +425,177 @@ class Abc_Env(Env):
 
 
     def close(self):
+        Abc_Stop()
+
+
+class AbcLocalOperations():
+
+    def __init__(self, env_config: dict):
+        self.env_config = env_config
+        self.num_actions = len(env_config["optimizations"]["aig"])
+        Abc_Start()
+
+        # keep trac of the history and best episode/trajectory
+        self.logger = RLfLO_logger(self)
+        self.step_num = 0
+        self.episode = 0   
+        self.done = False
+        self.reward = 0
+        self.accumulated_reward = 0
+        self.current_trajectory = []
+
+        # initialize variables to be used to get metrices from ABC
+        self.c_delay = c_float()
+        self.c_area = c_float()
+        self.c_num_nodes = c_int()
+        self.c_num_levels = c_int()
+
+        Abc_Start()
+        self.pAbc = Abc_FrameGetGlobalFrame()
+        library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
+        Cmd_CommandExecute(self.pAbc, ('read_lib -v ' + library_dir).encode('UTF-8'))   # load library file
+        self.reset()
+
+    def reset(self):
+        """reset the state of Abc by simply reloading the original circuit"""
+        self.logger.log_episode()
+        self.step_num = 0
+        self.episode = 0   
+        self.done = False
+        self.reward = 0
+        self.accumulated_reward = 0
+        self.current_trajectory = []
+        self.action = None # None = env was resetted
+
+        # load the circuit and get the initial observation
+        circuit_dir = os.path.join(os.getcwd(), self.env_config["circuit_file"])
+        Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))          # load circuit
+        Cmd_CommandExecute(self.pAbc, b'strash')
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))     # get numNodes and numLevels
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
+
+        # save initial metrics
+        self.initial_delay = self.delay
+        self.initial_area = self.area
+        self.initial_num_nodes = self.num_nodes
+        self.initial_num_levels = self.num_levels
+
+        self.stats_normalization = np.array([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=np.float32)
+
+        obs = self._get_obs(reset=True)
+        info = self._get_info()
+        if self.done:
+            raise Exception("An Environment that is done shouldn't call step()!")
+        elif self.step_num >= self.horizon:
+            self.done = True
+
+        
+
+        return obs
+
+    def step(self, action, node_id):
+
+        if self.done:
+            raise Exception("An Environment that is done shouldn't call step()!")
+        elif self.step_num >= self.horizon:
+            self.done = True
+    
+        self.step_num += 1
+        self.action = action
+
+        action_str = self.env_config['optimizations'][self.graph_type][action]
+
+        if action_str == "rewrite": # fUpdateLevels = 1
+            Abc_RLfLONtkRewrite(self.pAbc, node_id, 1, 0, 0, 0, 0)
+        elif action_str == "rewrite -z":
+            Abc_RLfLONtkRewrite(self.pAbc, node_id, 1, 1, 0, 0, 0)
+        elif action_str == "refactor": # nodeSizeMax 10 ConeSizeMax 16 fUpdateLevel =  1
+            Abc_RLfLONtkRefactor(self.pAbc, node_id, 10, 16, 1, 0, 0, 0)
+        elif action_str == "refactor -z":
+            Abc_RLfLONtkRefactor(self.pAbc, node_id, 10, 16, 1, 1, 0, 0)
+        elif action_str == "resub": # nCutsMax     =  8; nNodesMax    =  1; nLevelsOdc   =  0; fUpdateLevel =  1;
+            Abc_RLfLONtkResubstitute(self.pAbc, node_id, 8, 1, 0, 1, 0, 0)
+        # elif action_str == "resub -z": Use Zero doesn't exist!?
+        #     Abc_RLfLONtkResubstitute(self.pAbc, node_id, 8, 1, 0, 1, 0, 0)
+        elif action_str == "balance":
+            Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 0)
+        elif action_str == "balacne -d":
+            Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 1)
+        elif action_str == "desub":
+            Abc_RLfLONtkDesub(self.pAbc, node_id)
+        else:
+            raise Exception("Invalid action!")
+
+        obs = self._get_obs()
+        info = self._get_info()
+        reward = self._get_reward()
+        self.reward = reward
+
+        self.logger.log_step()
+
+        return obs, reward, self.done, info
+
+    def _get_obs(self, reset=False):
+        # save the previous metrics
+        if not reset:
+            self.prev_delay = self.delay
+            self.prev_area = self.area
+            self.prev_num_nodes = self.num_nodes
+            self.prev_num_levels = self.num_levels
+        
+        obs = {}
+        
+        types, num_invs = Abc_RLfLOGetNodeFeatures_wrapper(self.pAbc) # node types aren't one hot encoded yet!
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(self.pAbc)
+        delays = Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 1)
+
+        # calculate slack from delays and normalize by target_delay
+        slacks = (delays - self.target_delay)/self.target_delay
+
+        types = one_hot(torch.tensor(types, dtype=torch.LongTensor)).float()
+        node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
+
+        obs["node_features"] = node_features
+        obs["edge_index"] = edge_index
+        obs["edge_attr"] = edge_attr
+
+
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
+
+        obs["states"] = np.array([self.delay, self.area, self.num_nodes, self.num_levels], dtype=np.float32)/self.stats_normalization
+
+        return obs
+
+
+    def _get_reward(self):
+        """the reward is the improvement in area and delay (untill the delay target is met)
+        scaled by the initial area and delay respectively"""
+        area_reward = (self.prev_area - self.area)/self.initial_area
+        if self.prev_delay > self.target_delay:
+            if self.delay > self.target_delay:
+                delay_reward = (self.prev_delay - self.delay)/self.target_delay
+            else:
+                delay_reward = (self.prev_delay - self.target_delay)/self.target_delay
+        else:
+            if self.delay > self.target_delay:
+                delay_reward = (self.target_delay - self.delay)/self.target_delay
+            else:
+                delay_reward = 0
+
+        return area_reward + self.delay_reward_factor * delay_reward
+
+    def _get_info(self):
+        return {}
+
+    def __del__(self):
         Abc_Stop()
 
 

@@ -628,7 +628,7 @@ Abc_RLfLOMapGetAreaDelay.argtypes = [POINTER(Abc_Frame_t), POINTER(c_float), POI
 Abc_RLfLOMapGetAreaDelay.restype = None
 
 Abc_RLfLOGetNodeFeatures = getattr(lib, "Abc_RLfLOGetNodeFeatures")
-Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS'), c_size_t, np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS'), c_size_t]
+Abc_RLfLOGetNodeFeatures.argtypes = [POINTER(Abc_Frame_t), np.ctypeslib.ndpointer(dtype=c_int32, ndim=1, flags='C_CONTIGUOUS'), c_size_t, np.ctypeslib.ndpointer(dtype=c_float, ndim=1, flags='C_CONTIGUOUS'), c_size_t]
 Abc_RLfLOGetNodeFeatures.restype = None
 
 Abc_RLfLONtkRefactor = getattr(lib, "Abc_RLfLONtkRefactor")
@@ -673,7 +673,7 @@ def Abc_RLfLOGetObjTypes_wrapper(pAbc):
 def Abc_RLfLOGetNodeFeatures_wrapper(pAbc):
     num_objs = c_int()
     Abc_RLfLOGetNumObjs(pAbc, byref(num_objs))
-    types = np.ones( num_objs.value, dtype=c_float ) * (-1)
+    types = np.ones( num_objs.value, dtype=c_int32 ) * (-1)
     num_inv = np.ones( num_objs.value, dtype=c_float ) * (-1)
     Abc_RLfLOGetNodeFeatures(pAbc, types, *types.shape, num_inv, *num_inv.shape )
     return types, num_inv

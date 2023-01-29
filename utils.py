@@ -5,6 +5,9 @@ import numpy as np
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.tune.logger import UnifiedLogger
 
+def onehot_encode(array, max):
+    return (np.arange(max+1) == array[...,None]).astype(np.float32)
+
 
 def logger_creator(config):
     logger_config = config["logger_config"]
