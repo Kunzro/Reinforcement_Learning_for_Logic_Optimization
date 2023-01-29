@@ -21,6 +21,8 @@ class GCN(TorchModelV2, torch.nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         self.use_graph = custom_model_kwargs["use_graph"]
         self.use_previous_action = custom_model_kwargs["use_previous_action"]
+        self.use_state = custom_model_kwargs["use_state"]
+        assert (self.use_graph or self.use_previous_action or self.use_state), "Some features are required!"
         self.num_outputs = num_outputs
         self.lstm_state_size = lstm_state_size
         original_obs_space = obs_space.original_space if hasattr(obs_space, "original_space") else obs_space
@@ -32,7 +34,7 @@ class GCN(TorchModelV2, torch.nn.Module):
             GINE_OUT = 8
             self.gine1 = GINEConv(
                 nn = torch.nn.Sequential(
-                    torch.nn.Linear(2, 16),
+                    torch.nn.Linear(original_obs_space["node_features"].shape[1], 16),
                     torch.nn.BatchNorm1d(16),
                     torch.nn.ReLU()
                 ),
@@ -66,9 +68,13 @@ class GCN(TorchModelV2, torch.nn.Module):
             self.action_fc = torch.nn.Linear(self.lstm_state_size, ACTION_OUT)
         else:
             ACTION_OUT = 0
-        # create the layers for the state processing
-        STATE_OUT = 12
-        self.state_fc = torch.nn.Linear(self.states_size, STATE_OUT)
+
+        if self.use_state:
+            # create the layers for the state processing
+            STATE_OUT = 12
+            self.state_fc = torch.nn.Linear(self.states_size, STATE_OUT)
+        else:
+            STATE_OUT = 0
 
         # create the layers for state postprocessing
         self.state_postprocessing_fc = torch.nn.Linear(GINE_OUT + GINE_OUT + STATE_OUT + ACTION_OUT, 32)
@@ -113,9 +119,10 @@ class GCN(TorchModelV2, torch.nn.Module):
             graph_x_max = global_max_pool(graph_x, batch=batch.batch)
 
         # handle the global states data
-        states_x = input_dict["obs"]["states"]
-        states_x = self.state_fc(states_x)
-        states_x = F.relu(states_x)
+        if self.use_state:
+            states_x = input_dict["obs"]["states"]
+            states_x = self.state_fc(states_x)
+            states_x = F.relu(states_x)
 
         # handle the action history
         if self.use_previous_action:
@@ -132,7 +139,9 @@ class GCN(TorchModelV2, torch.nn.Module):
             action_x = F.relu(action_x)
 
         # get the action
-        preprocessed_signals = [states_x]
+        preprocessed_signals = []
+        if self.use_state:
+            preprocessed_signals.append(states_x)
         if self.use_graph:
             preprocessed_signals.extend([graph_x_max, graph_x_mean])
         if self.use_previous_action:

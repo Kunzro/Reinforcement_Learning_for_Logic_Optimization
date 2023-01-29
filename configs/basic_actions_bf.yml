@@ -11,6 +11,7 @@ horizon: 40
 delay_reward_factor: 10
 use_graph: False
 use_previous_action: False
+use_state: False
 use_builtin_map: False
 
 # the circuits for which to run the experiments for
