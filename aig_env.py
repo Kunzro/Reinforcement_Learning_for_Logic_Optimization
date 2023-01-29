@@ -265,12 +265,12 @@ class Abc_Env(Env):
             # onehot encode types
             node_features = np.concatenate((onehot_encode(types, max=3), num_inv[..., np.newaxis]), axis=1)
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*2.5)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*2.5)
+                self.max_nodes = int(node_features.shape[0]*3.5)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*3.5)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
-            assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_nodes, node_data_size)
-            assert self.max_edges-edge_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(self.max_edges, edge_data_size)
+            assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(node_data_size, self.max_nodes)
+            assert self.max_edges-edge_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(edge_data_size, self.max_edges)
             assert edge_data_size == edge_attr.shape[0], "the size for edge attr and edge index should be the same." # make sure egde_attr size == edge_data size
             obs["node_features"] = np.pad(node_features, ((0, self.max_nodes-node_data_size), (0, 0)))
             obs["edge_index"] = np.pad(edge_index, ((0,0), (0, self.max_edges-edge_data_size)))
@@ -290,7 +290,7 @@ class Abc_Env(Env):
         if "use_builtin_map" in self.env_config and self.env_config["use_builtin_map"]:
             Cmd_CommandExecute(self.pAbc, (f"map -D {self.target_delay}").encode('UTF-8'))
             Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0)
-            Cmd_CommandExecute(self.pAbc, b'strash')
+            Cmd_CommandExecute(self.pAbc, b'strash; strash')
         else:
             # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
             # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 1, 0, 0, 0, 0, 0)           # map and get area and delay AREA ONLY MODE
