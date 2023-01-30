@@ -49,6 +49,9 @@ for circuit in experiment_configs["circuits"]:
 
     conf = conf.training(
         train_batch_size = experiment_config["train_batch_size"],
+        # grad_clip=0.1,
+        clip_param=experiment_config["clip_param"],
+        num_sgd_iter=30,
         model={
             "custom_model": GCN,
             "custom_model_config": experiment_config
@@ -65,7 +68,13 @@ for circuit in experiment_configs["circuits"]:
         rollout_fragment_length=experiment_config["horizon"],
         batch_mode='complete_episodes',
         horizon=experiment_config["horizon"],
-        preprocessor_pref=None
+        preprocessor_pref=None,
+        compress_observations=True
+    )
+    conf = conf.evaluation(
+        evaluation_num_workers=10,
+        evaluation_duration=10,
+        evaluation_config = {"explore": True}
     )
     conf = conf.reporting(keep_per_episode_custom_metrics=True)
     conf = conf.debugging(
@@ -81,9 +90,11 @@ for circuit in experiment_configs["circuits"]:
     for i in range(experiment_config["train_iterations"]):
         result = algo.train()
 
+    algo.save(prevent_upload=True)
     # save stats and the used config
+    env = experiment_env(experiment_config)
     results_dir = os.path.join(algo.logdir, "results.npz")
-    save_results(algo, results_dir)
+    save_results(algo, results_dir, env)
 
     config_dir = os.path.join(algo.logdir, "experiment_config.yml")
     with open(config_dir, 'w') as file:

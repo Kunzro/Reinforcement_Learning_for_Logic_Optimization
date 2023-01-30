@@ -1,6 +1,6 @@
 import numpy as np
 
-def save_results(trainer, dir):
+def save_results(trainer, dir, env=None):
     def get_rewards(env):
         return env.logger.rewards
     def get_areas(env):
@@ -12,13 +12,34 @@ def save_results(trainer, dir):
     def reset_env(env):
         env.reset()
 
+    arrays_dict = {}
     trainer.workers.foreach_env(reset_env)
-    rewards = np.array([reward for reward in trainer.workers.foreach_env(get_rewards) if reward != []])
-    areas = np.array([area for area in trainer.workers.foreach_env(get_areas) if area != []])
-    delays = np.array([delay for delay in trainer.workers.foreach_env(get_delays) if delay != []])
-    actions = np.array([action for action in trainer.workers.foreach_env(get_actions) if action != []])
+    arrays_dict["rewards"] = np.array([reward for reward in trainer.workers.foreach_env(get_rewards) if reward != []])
+    arrays_dict["areas"] = np.array([area for area in trainer.workers.foreach_env(get_areas) if area != []])
+    arrays_dict["delays"] = np.array([delay for delay in trainer.workers.foreach_env(get_delays) if delay != []])
+    arrays_dict["actions"] = np.array([action for action in trainer.workers.foreach_env(get_actions) if action != []])
 
-    np.savez(dir, rewards=rewards, areas=areas, delays=delays, actions=actions)
+    # if trainer.evaluation_config["evaluation_interval"] is not None:
+    trainer.evaluate()
+
+    arrays_dict["eval_rewards"] = np.array([reward for reward in trainer.evaluation_workers.foreach_env(get_rewards) if reward != []])
+    arrays_dict["eval_areas"] = np.array([area for area in trainer.evaluation_workers.foreach_env(get_areas) if area != []])
+    arrays_dict["eval_delays"] = np.array([delay for delay in trainer.evaluation_workers.foreach_env(get_delays) if delay != []])
+    arrays_dict["eval_actions"] = np.array([action for action in trainer.evaluation_workers.foreach_env(get_actions) if action != []])
+
+    if env is not None:
+        obs = env.reset()
+        state = trainer.workers.local_worker().get_policy().get_initial_state()
+        for i in range(env.env_config["horizon"]):
+            action, state, extra = trainer.compute_single_action(observation=obs, state=state, explore=False)
+            obs, reward, done, info = env.step(action)
+        env.reset()
+        arrays_dict["greedy_rewards"] = np.array(env.logger.rewards)
+        arrays_dict["greedy_areas"] = np.array(env.logger.areas)
+        arrays_dict["greedy_delays"] = np.array(env.logger.delays)
+        arrays_dict["greedy_actions"] = np.array(env.logger.actions)
+
+    np.savez(dir, **arrays_dict)
 
 
 def load_results(dir):
