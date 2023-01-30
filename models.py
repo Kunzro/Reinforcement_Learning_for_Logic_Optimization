@@ -151,7 +151,7 @@ class GCN(TorchModelV2, torch.nn.Module):
         policy_x = self.policy_fc1(self.intermediate_x)
         policy_x = self.policy_fc2(policy_x)
         
-        if self.use_graph:
+        if self.use_previous_action:
             return (policy_x, [h, c])
         else:
             return (policy_x, state)
