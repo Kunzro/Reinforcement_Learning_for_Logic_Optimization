@@ -129,10 +129,10 @@ dmypy.json
 .pyre/
 
 # ignore my test.py file
-test.py
+test*
 
 # ignore vscode stuff
 .vscode
 
 # ignore results
-/results
+/results*
