@@ -265,8 +265,8 @@ class Abc_Env(Env):
             # onehot encode types
             node_features = np.concatenate((onehot_encode(types, max=3), num_inv[..., np.newaxis]), axis=1)
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*3.5)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*3.5)
+                self.max_nodes = int(node_features.shape[0]*5)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*5)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(node_data_size, self.max_nodes)
@@ -289,7 +289,7 @@ class Abc_Env(Env):
         Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))             # get numNodes and numLevels
         if "use_builtin_map" in self.env_config and self.env_config["use_builtin_map"]:
             Cmd_CommandExecute(self.pAbc, (f"map -D {self.target_delay}").encode('UTF-8'))
-            Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_area), byref(self.c_delay), 0, 0)
+            Abc_RLfLOGetMaxDelayTotalArea(self.pAbc, byref(self.c_delay), byref(self.c_area), 0, 0)
             Cmd_CommandExecute(self.pAbc, b'strash; strash')
         else:
             # Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 0, 0, 0, 0, 0)             # map and get area and delay DEFAULT MODE
@@ -433,7 +433,8 @@ class AbcLocalOperations():
     def __init__(self, env_config: dict):
         self.env_config = env_config
         self.num_actions = len(env_config["optimizations"]["aig"])
-        Abc_Start()
+        self.target_delay = env_config["target_delay"]
+        self.delay_reward_factor = env_config["delay_reward_factor"]
 
         # keep trac of the history and best episode/trajectory
         self.logger = RLfLO_logger(self)
@@ -496,7 +497,7 @@ class AbcLocalOperations():
 
         
 
-        return obs
+        return obs, info, 
 
     def step(self, action, node_id):
 
@@ -524,7 +525,7 @@ class AbcLocalOperations():
         #     Abc_RLfLONtkResubstitute(self.pAbc, node_id, 8, 1, 0, 1, 0, 0)
         elif action_str == "balance":
             Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 0)
-        elif action_str == "balacne -d":
+        elif action_str == "balance -d":
             Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 1)
         elif action_str == "desub":
             Abc_RLfLONtkDesub(self.pAbc, node_id)
@@ -558,11 +559,12 @@ class AbcLocalOperations():
         slacks = (delays - self.target_delay)/self.target_delay
 
         types = one_hot(torch.tensor(types, dtype=torch.LongTensor)).float()
-        node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
+        node_features = torch.cat((types, num_invs, slacks), dim=1)
+        # node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
 
         obs["node_features"] = node_features
-        obs["edge_index"] = edge_index
-        obs["edge_attr"] = edge_attr
+        obs["edge_index"] = torch.from_numpy(edge_index)
+        obs["edge_attr"] = torch.from_numpy(edge_attr)
 
 
         self.delay = self.c_delay.value
