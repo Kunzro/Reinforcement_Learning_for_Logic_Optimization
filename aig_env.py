@@ -9,7 +9,7 @@ import yaml
 from gym import Env, spaces
 from ray.rllib.utils import check_env
 from ray.rllib.utils.spaces.repeated import Repeated
-from torch.nn.functional import one_hot
+from torch_geometric.data import Data
 
 from abc_ctypes import (Abc_FrameGetGlobalFrame, Abc_RLfLOBalanceNode,
                         Abc_RLfLOGetEdges_wrapper,
@@ -265,8 +265,8 @@ class Abc_Env(Env):
             # onehot encode types
             node_features = np.concatenate((onehot_encode(types, max=3), num_inv[..., np.newaxis]), axis=1)
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*5)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*5)
+                self.max_nodes = int(node_features.shape[0]*4)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*4)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(node_data_size, self.max_nodes)
@@ -432,9 +432,10 @@ class AbcLocalOperations():
 
     def __init__(self, env_config: dict):
         self.env_config = env_config
-        self.num_actions = len(env_config["optimizations"]["aig"])
+        self.num_actions = len(env_config["optimizations"])
         self.target_delay = env_config["target_delay"]
         self.delay_reward_factor = env_config["delay_reward_factor"]
+        self.horizon = self.env_config["horizon"]
 
         # keep trac of the history and best episode/trajectory
         self.logger = RLfLO_logger(self)
@@ -486,7 +487,7 @@ class AbcLocalOperations():
         self.initial_num_nodes = self.num_nodes
         self.initial_num_levels = self.num_levels
 
-        self.stats_normalization = np.array([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=np.float32)
+        self.stats_normalization = torch.tensor([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=torch.float32)
 
         obs = self._get_obs(reset=True)
         info = self._get_info()
@@ -495,11 +496,15 @@ class AbcLocalOperations():
         elif self.step_num >= self.horizon:
             self.done = True
 
-        
+        self.num_node_features = obs["graph_data"].num_node_features
 
         return obs, info, 
 
-    def step(self, action, node_id):
+    def step(self, action):
+        
+        # find the action and node id from the "global action"
+        node_id = action // self.num_actions
+        action = action % self.num_actions
 
         if self.done:
             raise Exception("An Environment that is done shouldn't call step()!")
@@ -509,7 +514,7 @@ class AbcLocalOperations():
         self.step_num += 1
         self.action = action
 
-        action_str = self.env_config['optimizations'][self.graph_type][action]
+        action_str = self.env_config['optimizations'][action]
 
         if action_str == "rewrite": # fUpdateLevels = 1
             Abc_RLfLONtkRewrite(self.pAbc, node_id, 1, 0, 0, 0, 0)
@@ -556,23 +561,21 @@ class AbcLocalOperations():
         delays = Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 1)
 
         # calculate slack from delays and normalize by target_delay
-        slacks = (delays - self.target_delay)/self.target_delay
-
-        types = one_hot(torch.tensor(types, dtype=torch.LongTensor)).float()
+        slacks = torch.from_numpy((delays - self.target_delay)/self.target_delay).unsqueeze(1)
+        num_invs = torch.from_numpy(num_invs).unsqueeze(1)
+        types = torch.from_numpy(onehot_encode(types, max=3))
         node_features = torch.cat((types, num_invs, slacks), dim=1)
         # node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
-
-        obs["node_features"] = node_features
-        obs["edge_index"] = torch.from_numpy(edge_index)
-        obs["edge_attr"] = torch.from_numpy(edge_attr)
-
+        edge_index = torch.tensor(edge_index, dtype=torch.long)
+        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        obs["graph_data"] = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
 
         self.delay = self.c_delay.value
         self.area = self.c_area.value
         self.num_nodes = self.c_num_nodes.value
         self.num_levels = self.c_num_levels.value
 
-        obs["states"] = np.array([self.delay, self.area, self.num_nodes, self.num_levels], dtype=np.float32)/self.stats_normalization
+        obs["states"] = torch.tensor([self.delay, self.area, self.num_nodes, self.num_levels], dtype=torch.float32)/self.stats_normalization
 
         return obs
 

@@ -6,6 +6,66 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 from torch_geometric.data import Data, Batch
 
+class LocalOpsModel(torch.nn.Module):
+    def __init__(self, num_node_features, num_actions):
+        super().__init__()
+
+        self.gine1 = GINEConv(
+            nn = torch.nn.Sequential(
+                torch.nn.Linear(num_node_features, 16),
+                torch.nn.BatchNorm1d(16),
+                torch.nn.ReLU()
+            ),
+            train_eps=True,
+            edge_dim=1
+        )
+        self.gine2 = GINEConv(
+            nn = torch.nn.Sequential(
+                torch.nn.Linear(16, 16),
+                torch.nn.BatchNorm1d(16),
+                torch.nn.ReLU()
+            ),
+            train_eps=True,
+            edge_dim=1
+        )
+        self.gine3 = GINEConv(
+            nn = torch.nn.Sequential(
+                torch.nn.Linear(16, 16),
+                torch.nn.BatchNorm1d(16),
+                torch.nn.ReLU()
+            ),
+            train_eps=True,
+            edge_dim=1
+        )
+        self.actor_head = torch.nn.Linear(16, num_actions)
+        self.value_head = torch.nn.Linear(2*16, 1)
+
+    def forward(self, states, graph_data):
+        if isinstance(graph_data, list):
+            mini_batch = Batch.from_data_list(graph_data)
+            graph_x, edge_index, edge_attr, batch = mini_batch.x, mini_batch.edge_index, mini_batch.edge_attr, mini_batch.batch
+        elif isinstance(graph_data, Data):
+            graph_x, edge_index, edge_attr, batch = graph_data.x, graph_data.edge_index, graph_data.edge_attr, graph_data.batch
+        else:
+            raise TypeError("unsupported datatype")
+        graph_x = self.gine1(graph_x, edge_index, edge_attr)
+        graph_x = self.gine2(graph_x, edge_index, edge_attr)
+        graph_x = self.gine3(graph_x, edge_index, edge_attr)
+
+        graph_x_mean = global_mean_pool(graph_x, batch=batch)
+        graph_x_max = global_max_pool(graph_x, batch=batch)
+        self.intermediate_state = torch.cat((graph_x_mean, graph_x_max), dim=1)
+
+        graph_x = self.actor_head(graph_x)
+        graph_x = torch.nn.functional.softmax(graph_x, dim=-1)
+
+        return graph_x
+
+    def value_function(self):
+        assert hasattr(self, "intermediate_state"), "can not call value_function before forward"
+        return self.value_head(self.intermediate_state)
+
+
 class GCN(TorchModelV2, torch.nn.Module):
     def __init__(
         self,

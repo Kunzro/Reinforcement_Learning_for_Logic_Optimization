@@ -1,0 +1,70 @@
+# agent training parameters
+experiment_name: local_actions
+env: Abc_Env  # Abc_Env or Mockturtle_Env
+algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
+train_iterations: 10
+train_batch_size: 400 # take care that train batch size is a multiple of num_rollout_workers*horizon
+sgd_minibatch_size: 40 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
+microbatch_size: 40
+num_rollout_workers: 10
+horizon: 10
+delay_reward_factor: 10
+use_graph: True
+use_previous_action: True
+use_state: True
+use_builtin_map: True
+clip_param: 0.1
+
+# the circuits for which to run the experiments for
+circuits:
+  - adder
+  # - bar
+  # - log2
+  # - max
+  # - multiplier
+  # - sine
+  # - sqrt
+  # - square
+
+# standard cell library mapping
+library_file: libraries/asap7.lib
+
+# available optimizaction actions
+optimizations:
+  - rewrite
+  - rewrite -z
+  - refactor
+  - refactor -z
+  - resub
+  - balance
+  - balance -d
+  - desub
+
+# only for Mockturtle relevant
+mockturtle:
+  graph_type: mig
+
+# delay targets and circuit file locations
+target_delays:
+  adder: 2000
+  bar: 800
+  div: 75000
+  hype: 1000000
+  log2: 7500
+  max: 4000
+  multiplier: 4000
+  sine: 3800
+  sqrt: 170000
+  square: 2200
+
+circuit_files:
+  adder: circuits/adder.v
+  bar: circuits/bar.v
+  div: circuits/div.v
+  hype: circuits/hypo.v
+  log2: circuits/log2.v
+  max: circuits/max.v
+  multiplier: circuits/multiplier.v
+  sine: circuits/sine.v
+  sqrt: circuits/sqrt.v
+  square: circuits/square.v
