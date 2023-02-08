@@ -48,17 +48,20 @@ def load_results(dir):
 
 
 class RLfLO_logger():
-    def __init__(self, env):
+    def __init__(self, env, track_ids=False):
         self.env = env
+        self.track_ids = track_ids
         self.num_steps = 0
         self.rewards = []           # list of lists tracking the rewards at each step per episode
         self.areas = []             # list of lists tracking the areas at each step per episode
         self.delays = []            # list of lists tracking the delays at each step per episode$
         self.actions = []           # list of lists tracking the actions at each step per episode
+        self.node_ids = []
         self.current_rewards = []
         self.current_areas = []
         self.current_delays = []
         self.current_actions = []
+        self.current_node_ids = []
 
     def log_step(self):
         """call this at every step of the episode"""
@@ -66,6 +69,8 @@ class RLfLO_logger():
         self.current_areas.append(self.env.area)
         self.current_delays.append(self.env.delay)
         self.current_actions.append(self.env.action)
+        if self.track_ids:
+            self.current_node_ids.append(self.env.node_id)
 
     def log_episode(self):
         """call this at the end of the episode to log the episode eg in the rest function of the env"""
@@ -74,8 +79,11 @@ class RLfLO_logger():
             self.areas.append(self.current_areas.copy())
             self.delays.append(self.current_delays.copy())
             self.actions.append(self.current_actions.copy())
+            if self.track_ids:
+                self.node_ids.append(self.current_node_ids.copy())
         self.current_rewards = []
         self.current_areas = []
         self.current_delays = []
         self.current_actions = []
+        self.current_node_ids = []
 

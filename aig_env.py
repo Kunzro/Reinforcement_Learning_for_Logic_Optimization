@@ -265,8 +265,8 @@ class Abc_Env(Env):
             # onehot encode types
             node_features = np.concatenate((onehot_encode(types, max=3), num_inv[..., np.newaxis]), axis=1)
             if not hasattr(self, 'max_nodes') and not hasattr(self, 'max_edges'): # set max num nodes and edges to 3x the initial num
-                self.max_nodes = int(node_features.shape[0]*4)  # 3 worked for log2
-                self.max_edges = int(edge_attr.shape[0]*4)
+                self.max_nodes = int(node_features.shape[0]*5)  # 3 worked for log2
+                self.max_edges = int(edge_attr.shape[0]*5)
             node_data_size = node_features.shape[0]
             edge_data_size =  edge_index.shape[1]
             assert self.max_nodes-node_data_size >= 0, "the observation {} is bigger than the maximum size of the array {}.".format(node_data_size, self.max_nodes)
@@ -438,7 +438,7 @@ class AbcLocalOperations():
         self.horizon = self.env_config["horizon"]
 
         # keep trac of the history and best episode/trajectory
-        self.logger = RLfLO_logger(self)
+        self.logger = RLfLO_logger(self, track_ids=True)
         self.step_num = 0
         self.episode = 0   
         self.done = False
@@ -490,15 +490,10 @@ class AbcLocalOperations():
         self.stats_normalization = torch.tensor([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=torch.float32)
 
         obs = self._get_obs(reset=True)
-        info = self._get_info()
-        if self.done:
-            raise Exception("An Environment that is done shouldn't call step()!")
-        elif self.step_num >= self.horizon:
-            self.done = True
 
         self.num_node_features = obs["graph_data"].num_node_features
 
-        return obs, info, 
+        return obs
 
     def step(self, action):
         
@@ -513,6 +508,7 @@ class AbcLocalOperations():
     
         self.step_num += 1
         self.action = action
+        self.node_id = node_id
 
         action_str = self.env_config['optimizations'][action]
 
@@ -595,7 +591,7 @@ class AbcLocalOperations():
             else:
                 delay_reward = 0
 
-        return area_reward + self.delay_reward_factor * delay_reward
+        return 10*(area_reward + self.delay_reward_factor * delay_reward)
 
     def _get_info(self):
         return {}

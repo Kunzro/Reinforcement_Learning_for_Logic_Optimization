@@ -1,9 +1,9 @@
 import torch
 import gym
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool, GINEConv
+from torch_geometric.nn import global_mean_pool, global_max_pool, GINEConv
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, ModelConfigDict
 from torch_geometric.data import Data, Batch
 
 class LocalOpsModel(torch.nn.Module):
@@ -12,8 +12,8 @@ class LocalOpsModel(torch.nn.Module):
 
         self.gine1 = GINEConv(
             nn = torch.nn.Sequential(
-                torch.nn.Linear(num_node_features, 16),
-                torch.nn.BatchNorm1d(16),
+                torch.nn.Linear(num_node_features, 32),
+                torch.nn.BatchNorm1d(32),
                 torch.nn.ReLU()
             ),
             train_eps=True,
@@ -21,8 +21,8 @@ class LocalOpsModel(torch.nn.Module):
         )
         self.gine2 = GINEConv(
             nn = torch.nn.Sequential(
-                torch.nn.Linear(16, 16),
-                torch.nn.BatchNorm1d(16),
+                torch.nn.Linear(32, 32),
+                torch.nn.BatchNorm1d(32),
                 torch.nn.ReLU()
             ),
             train_eps=True,
@@ -30,15 +30,16 @@ class LocalOpsModel(torch.nn.Module):
         )
         self.gine3 = GINEConv(
             nn = torch.nn.Sequential(
-                torch.nn.Linear(16, 16),
-                torch.nn.BatchNorm1d(16),
+                torch.nn.Linear(32, 32),
+                torch.nn.BatchNorm1d(32),
                 torch.nn.ReLU()
             ),
             train_eps=True,
             edge_dim=1
         )
-        self.actor_head = torch.nn.Linear(16, num_actions)
-        self.value_head = torch.nn.Linear(2*16, 1)
+        self.actor_head1 = torch.nn.Linear(32, 32)
+        self.actor_head2 = torch.nn.Linear(32, num_actions)
+        self.value_head = torch.nn.Linear(2*32, 1)
 
     def forward(self, states, graph_data):
         if isinstance(graph_data, list):
@@ -56,7 +57,10 @@ class LocalOpsModel(torch.nn.Module):
         graph_x_max = global_max_pool(graph_x, batch=batch)
         self.intermediate_state = torch.cat((graph_x_mean, graph_x_max), dim=1)
 
-        graph_x = self.actor_head(graph_x)
+        graph_x = self.actor_head1(graph_x)
+        graph_x = torch.nn.functional.relu(graph_x)
+        graph_x = self.actor_head2(graph_x)
+        graph_x = torch.nn.functional.relu(graph_x)
         graph_x = torch.nn.functional.softmax(graph_x, dim=-1)
 
         return graph_x
