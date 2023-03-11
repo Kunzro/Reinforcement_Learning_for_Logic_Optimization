@@ -2,26 +2,27 @@
 experiment_name: lstm_paper_replication
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
-train_iterations: 50
-train_batch_size: 800 # take care that train batch size is a multiple of num_rollout_workers*horizon
-sgd_minibatch_size: 80 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
+train_iterations: 100
+train_batch_size: 400 # take care that train batch size is a multiple of num_rollout_workers*horizon
+sgd_minibatch_size: 40 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
 microbatch_size: 40
-num_rollout_workers: 20
+num_rollout_workers: 10
 horizon: 40
 delay_reward_factor: 10
 use_graph: True
 use_previous_action: True
 use_state: True
 use_builtin_map: True
+clip_param: 0.1
 
 # the circuits for which to run the experiments for
 circuits:
-  - adder
-  - bar
-  - log2
-  - max
-  - multiplier
-  - sine
+  # - adder
+  # - bar
+  # - log2
+  # - max
+  # - multiplier
+  # - sine
   - sqrt
   - square
 

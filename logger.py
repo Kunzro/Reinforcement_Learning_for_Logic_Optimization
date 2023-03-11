@@ -57,11 +57,15 @@ class RLfLO_logger():
         self.delays = []            # list of lists tracking the delays at each step per episode$
         self.actions = []           # list of lists tracking the actions at each step per episode
         self.node_ids = []
+        self.num_nodes = []
+        self.num_levels = []
         self.current_rewards = []
         self.current_areas = []
         self.current_delays = []
         self.current_actions = []
         self.current_node_ids = []
+        self.current_num_nodes = []
+        self.current_num_levels = []
 
     def log_step(self):
         """call this at every step of the episode"""
@@ -69,6 +73,8 @@ class RLfLO_logger():
         self.current_areas.append(self.env.area)
         self.current_delays.append(self.env.delay)
         self.current_actions.append(self.env.action)
+        self.current_num_nodes.append(self.env.num_nodes)
+        self.current_num_levels.append(self.env.num_levels)
         if self.track_ids:
             self.current_node_ids.append(self.env.node_id)
 
@@ -79,6 +85,8 @@ class RLfLO_logger():
             self.areas.append(self.current_areas.copy())
             self.delays.append(self.current_delays.copy())
             self.actions.append(self.current_actions.copy())
+            self.num_nodes.append(self.current_num_nodes.copy())
+            self.num_levels.append(self.current_num_levels.copy())
             if self.track_ids:
                 self.node_ids.append(self.current_node_ids.copy())
         self.current_rewards = []

@@ -1,5 +1,5 @@
 # agent training parameters
-experiment_name: basic_actions_gcn_lstm
+experiment_name: basic_actions_gcn
 env: Abc_Env  # Abc_Env or Mockturtle_Env
 algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
 train_iterations: 100
@@ -10,7 +10,7 @@ num_rollout_workers: 10
 horizon: 40
 delay_reward_factor: 10
 use_graph: True
-use_previous_action: True
+use_previous_action: False
 use_state: True
 use_builtin_map: False
 clip_param: 0.1

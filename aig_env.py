@@ -489,11 +489,13 @@ class AbcLocalOperations():
 
         self.stats_normalization = torch.tensor([self.target_delay, self.initial_area, self.initial_num_nodes, self.initial_num_levels], dtype=torch.float32)
 
-        obs = self._get_obs(reset=True)
+        self.obs = self._get_obs(reset=True)
+        self.info = self._get_info()
 
-        self.num_node_features = obs["graph_data"].num_node_features
+        self.num_node_features = self.obs["graph_data"].num_node_features
+        self.num_state_features = self.obs["states"].size()[0]
 
-        return obs
+        return self.obs
 
     def step(self, action):
         
@@ -530,17 +532,21 @@ class AbcLocalOperations():
             Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 1)
         elif action_str == "desub":
             Abc_RLfLONtkDesub(self.pAbc, node_id)
+        elif action_str == "no_action":
+            pass
         else:
             raise Exception("Invalid action!")
 
-        obs = self._get_obs()
-        info = self._get_info()
-        reward = self._get_reward()
-        self.reward = reward
+        if action_str != "no_action":
+            self.obs = self._get_obs()
+            self.info = self._get_info()
+            self.reward = self._get_reward()
+        else:
+            self.reward = 0
 
         self.logger.log_step()
 
-        return obs, reward, self.done, info
+        return self.obs, self.reward, self.done, self.info
 
     def _get_obs(self, reset=False):
         # save the previous metrics
@@ -555,6 +561,7 @@ class AbcLocalOperations():
         types, num_invs = Abc_RLfLOGetNodeFeatures_wrapper(self.pAbc) # node types aren't one hot encoded yet!
         edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(self.pAbc)
         delays = Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 1)
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))     # get numNodes and numLevels
 
         # calculate slack from delays and normalize by target_delay
         slacks = torch.from_numpy((delays - self.target_delay)/self.target_delay).unsqueeze(1)
@@ -592,6 +599,233 @@ class AbcLocalOperations():
                 delay_reward = 0
 
         return 10*(area_reward + self.delay_reward_factor * delay_reward)
+
+    def _get_info(self):
+        return {}
+
+    def __del__(self):
+        Abc_Stop()
+
+
+class AbcLocalOperationsSparse():
+
+    def __init__(self, env_config: dict):
+        self.env_config = env_config
+        self.num_actions = len(env_config["optimizations"])
+        self.target_delay = env_config["target_delay"]
+        self.delay_reward_factor = env_config["delay_reward_factor"]
+        self.horizon = self.env_config["horizon"]
+        self.num_sparse_rewards = self.env_config["num_sparse_rewards"]
+        self.normal_reward_factor = self.env_config["normal_reward_factor"]
+        self.level_reward_factor = self.env_config["level_reward_factor"]
+        
+        # keep trac of the history and best episode/trajectory
+        self.logger = RLfLO_logger(self, track_ids=True)
+        self.step_num = 0
+        self.episode = 0   
+        self.done = False
+        self.reward = 0
+        self.accumulated_reward = 0
+        self.current_trajectory = []
+
+        # initialize variables to be used to get metrices from ABC
+        self.c_delay = c_float()
+        self.c_area = c_float()
+        self.c_num_nodes = c_int()
+        self.c_num_levels = c_int()
+
+        Abc_Start()
+        self.pAbc = Abc_FrameGetGlobalFrame()
+        library_dir = os.path.join(os.getcwd(), self.env_config["library_file"])
+        Cmd_CommandExecute(self.pAbc, ('read_lib -v ' + library_dir).encode('UTF-8'))   # load library file
+        self.reset()
+
+    def reset(self):
+        """reset the state of Abc by simply reloading the original circuit"""
+        self.logger.log_episode()
+        self.step_num = 0
+        self.episode = 0   
+        self.done = False
+        self.reward = 0
+        self.accumulated_reward = 0
+        self.current_trajectory = []
+        self.action = None # None = env was resetted
+        self.sparse_reward_counter = 0
+
+        # load the circuit and get the initial observation
+        circuit_dir = os.path.join(os.getcwd(), self.env_config["circuit_file"])
+        Cmd_CommandExecute(self.pAbc, ('read ' + circuit_dir).encode('UTF-8'))          # load circuit
+        Cmd_CommandExecute(self.pAbc, b'strash')
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))     # get numNodes and numLevels
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 0)    # map and get area and delay TARGET DELAY MODE
+
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
+
+        # save initial metrics
+        self.initial_delay = self.delay
+        self.initial_area = self.area
+        self.initial_num_nodes = self.num_nodes
+        self.initial_num_levels = self.num_levels
+
+        self.stats_normalization = torch.tensor([self.initial_num_nodes, self.initial_num_levels], dtype=torch.float32)
+
+        self.obs = self._get_obs(reset=True)
+        self.info = self._get_info()
+
+        self.num_node_features = self.obs["graph_data"].num_node_features
+        self.num_state_features = self.obs["states"].size()[0]
+
+        return self.obs
+
+    def step(self, action):
+        
+        # find the action and node id from the "global action"
+        node_id = action // self.num_actions
+        action = action % self.num_actions
+
+        if self.done:
+            raise Exception("An Environment that is done shouldn't call step()!")
+        elif self.step_num >= self.horizon:
+            self.done = True
+    
+        self.step_num += 1
+        self.action = action
+        self.node_id = node_id
+
+        action_str = self.env_config['optimizations'][action]
+
+        if action_str == "rewrite": # fUpdateLevels = 1
+            Abc_RLfLONtkRewrite(self.pAbc, node_id, 1, 0, 0, 0, 0)
+        elif action_str == "rewrite -z":
+            Abc_RLfLONtkRewrite(self.pAbc, node_id, 1, 1, 0, 0, 0)
+        elif action_str == "refactor": # nodeSizeMax 10 ConeSizeMax 16 fUpdateLevel =  1
+            Abc_RLfLONtkRefactor(self.pAbc, node_id, 10, 16, 1, 0, 0, 0)
+        elif action_str == "refactor -z":
+            Abc_RLfLONtkRefactor(self.pAbc, node_id, 10, 16, 1, 1, 0, 0)
+        elif action_str == "resub": # nCutsMax     =  8; nNodesMax    =  1; nLevelsOdc   =  0; fUpdateLevel =  1;
+            Abc_RLfLONtkResubstitute(self.pAbc, node_id, 8, 1, 0, 1, 0, 0)
+        # elif action_str == "resub -z": Use Zero doesn't exist!?
+        #     Abc_RLfLONtkResubstitute(self.pAbc, node_id, 8, 1, 0, 1, 0, 0)
+        elif action_str == "balance":
+            Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 0)
+        elif action_str == "balance -d":
+            Abc_RLfLOBalanceNode(self.pAbc, node_id, 1, 1)
+        elif action_str == "desub":
+            Abc_RLfLONtkDesub(self.pAbc, node_id)
+        elif action_str == "no_action":
+            pass
+        else:
+            raise Exception("Invalid action!")
+
+
+        if action_str != "no_action":
+            self.info = self._get_info()
+            if self.sparse_reward_counter == self.num_sparse_rewards:
+                self.sparse_reward_counter = 0
+                self.obs = self._get_obs()
+                self.reward = self._get_reward()
+            else:
+                self.sparse_reward_counter += 1
+                self.obs = self._get_sparse_obs()
+                self.reward = self._get_sparse_reward()
+        else:
+            self.reward = 0
+
+        self.logger.log_step()
+
+        return self.obs, self.reward, self.done, self.info
+
+    def _get_obs(self, reset=False):
+        # save the previous metrics
+        if not reset:
+            self.prev_delay = self.delay
+            self.prev_area = self.area
+            self.prev_num_nodes = self.num_nodes
+            self.prev_num_levels = self.num_levels
+        
+        obs = {}
+        
+        types, num_invs = Abc_RLfLOGetNodeFeatures_wrapper(self.pAbc) # node types aren't one hot encoded yet!
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(self.pAbc)
+        Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 0)
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))     # get numNodes and numLevels
+
+        # calculate slack from delays and normalize by target_delay
+        # slacks = torch.from_numpy((delays - self.target_delay)/self.target_delay).unsqueeze(1)
+        num_invs = torch.from_numpy(num_invs).unsqueeze(1)
+        types = torch.from_numpy(onehot_encode(types, max=3))
+        node_features = torch.cat((types, num_invs), dim=1)
+        # node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
+        edge_index = torch.tensor(edge_index, dtype=torch.long)
+        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        obs["graph_data"] = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+
+        self.delay = self.c_delay.value
+        self.area = self.c_area.value
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
+
+        obs["states"] = torch.tensor([self.num_nodes, self.num_levels], dtype=torch.float32)/self.stats_normalization
+
+        return obs
+
+
+    def _get_sparse_obs(self, reset=False):
+        # save the previous metrics
+        if not reset:
+            self.prev_num_nodes = self.num_nodes
+            self.prev_num_levels = self.num_levels
+        
+        obs = {}
+        
+        types, num_invs = Abc_RLfLOGetNodeFeatures_wrapper(self.pAbc) # node types aren't one hot encoded yet!
+        edge_index, edge_attr = Abc_RLfLOGetEdges_wrapper(self.pAbc)
+        # delays = Abc_RLfLOMapGetAreaDelay_wrapper(self.pAbc, self.c_area, self.c_delay, 0, 1, self.target_delay, 0, 0, 1)
+        Abc_RLfLOGetNumNodesAndLevels(self.pAbc, byref(self.c_num_nodes), byref(self.c_num_levels))     # get numNodes and numLevels
+
+        # calculate slack from delays and normalize by target_delay
+        # slacks = torch.from_numpy((delays - self.target_delay)/self.target_delay).unsqueeze(1)
+        num_invs = torch.from_numpy(num_invs).unsqueeze(1)
+        types = torch.from_numpy(onehot_encode(types, max=3))
+        node_features = torch.cat((types, num_invs), dim=1)
+        # node_features = torch.tensor((types, num_invs, slacks), dtype=torch.float).reshape((types.shape[0], -1)) # todo make sure shape is correct
+        edge_index = torch.tensor(edge_index, dtype=torch.long)
+        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        obs["graph_data"] = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+
+        self.num_nodes = self.c_num_nodes.value
+        self.num_levels = self.c_num_levels.value
+
+        obs["states"] = torch.tensor([self.num_nodes, self.num_levels], dtype=torch.float32)/self.stats_normalization
+
+        return obs
+
+
+    def _get_sparse_reward(self):
+        """the reward is the improvement in area and delay (untill the delay target is met)
+        scaled by the initial area and delay respectively"""
+        return (self.prev_num_nodes - self.num_nodes)/self.initial_num_nodes + self.level_reward_factor*(self.prev_num_levels - self.num_levels)/self.initial_num_levels
+
+
+    def _get_reward(self):
+        """the reward is the improvement in area and delay (untill the delay target is met)
+        scaled by the initial area and delay respectively"""
+        area_reward = (self.prev_area - self.area)/self.initial_area
+        if self.prev_delay > self.target_delay:
+            if self.delay > self.target_delay:
+                delay_reward = (self.prev_delay - self.delay)/self.target_delay
+            else:
+                delay_reward = (self.prev_delay - self.target_delay)/self.target_delay
+        else:
+            if self.delay > self.target_delay:
+                delay_reward = (self.target_delay - self.delay)/self.target_delay
+            else:
+                delay_reward = 0
+
+        return self.normal_reward_factor*(area_reward + self.delay_reward_factor * delay_reward) + self._get_sparse_reward()
 
     def _get_info(self):
         return {}

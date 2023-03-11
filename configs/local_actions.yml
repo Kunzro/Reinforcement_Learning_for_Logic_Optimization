@@ -1,26 +1,23 @@
 # agent training parameters
 experiment_name: local_actions
-env: Abc_Env  # Abc_Env or Mockturtle_Env
-algorithm: PPO # A2C or PPO (PPO requires significantly more memory)
-train_iterations: 10
-train_batch_size: 400 # take care that train batch size is a multiple of num_rollout_workers*horizon
-sgd_minibatch_size: 40 # make sure this is a multiple of 20 since this is the default sequence length, otherwise the model has to handle various length sequences
-microbatch_size: 40
-num_rollout_workers: 10
-horizon: 10
+env: AbcLocalOperations  # Abc_Env or Mockturtle_Env
+algorithm: A2C_local
+train_iterations: [40000]
+iterations_name: [null]
+sgd_minibatch_size: 100
 delay_reward_factor: 10
-use_graph: True
-use_previous_action: True
-use_state: True
-use_builtin_map: True
-clip_param: 0.1
+level_reward_factor: 1
+normal_reward_factor: 1000
+num_sparse_rewards: 99
+sparse: True
+global_softmax: False
 
 # the circuits for which to run the experiments for
 circuits:
-  - adder
+  # - adder
   # - bar
   # - log2
-  # - max
+  - max
   # - multiplier
   # - sine
   # - sqrt
@@ -37,8 +34,9 @@ optimizations:
   - refactor -z
   - resub
   - balance
-  - balance -d
-  - desub
+  # - balance -d
+  # - desub
+  - no_action
 
 # only for Mockturtle relevant
 mockturtle:

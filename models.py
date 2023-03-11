@@ -7,9 +7,10 @@ from ray.rllib.utils.typing import TensorType, ModelConfigDict
 from torch_geometric.data import Data, Batch
 
 class LocalOpsModel(torch.nn.Module):
-    def __init__(self, num_node_features, num_actions):
+    # IMPORTANT DOES NOT SUPPORT MINIBATCHES YET
+    def __init__(self, num_state_features, num_node_features, num_actions, config):
         super().__init__()
-
+        self.config = config
         self.gine1 = GINEConv(
             nn = torch.nn.Sequential(
                 torch.nn.Linear(num_node_features, 32),
@@ -37,9 +38,11 @@ class LocalOpsModel(torch.nn.Module):
             train_eps=True,
             edge_dim=1
         )
-        self.actor_head1 = torch.nn.Linear(32, 32)
+        self.state_fc = torch.nn.Linear(num_state_features, 16)
+        self.actor_head1 = torch.nn.Linear(32 + 16, 32)
         self.actor_head2 = torch.nn.Linear(32, num_actions)
-        self.value_head = torch.nn.Linear(2*32, 1)
+        self.value_head1 = torch.nn.Linear(2*32 + 16, 32)
+        self.value_head2 = torch.nn.Linear(32, 1)
 
     def forward(self, states, graph_data):
         if isinstance(graph_data, list):
@@ -55,19 +58,26 @@ class LocalOpsModel(torch.nn.Module):
 
         graph_x_mean = global_mean_pool(graph_x, batch=batch)
         graph_x_max = global_max_pool(graph_x, batch=batch)
-        self.intermediate_state = torch.cat((graph_x_mean, graph_x_max), dim=1)
+        state_x = self.state_fc(states)
+        state_x = torch.nn.functional.relu(state_x)
+        self.intermediate_state = torch.cat((state_x.unsqueeze(0), graph_x_mean, graph_x_max), dim=1)
 
+        graph_x = torch.cat((graph_x, state_x.repeat(graph_x.shape[0], 1)), dim=1)
         graph_x = self.actor_head1(graph_x)
         graph_x = torch.nn.functional.relu(graph_x)
         graph_x = self.actor_head2(graph_x)
-        graph_x = torch.nn.functional.relu(graph_x)
-        graph_x = torch.nn.functional.softmax(graph_x, dim=-1)
+        if self.config["global_softmax"]:
+            graph_x = torch.nn.functional.softmax(graph_x.flatten(), dim=0).reshape(graph_x.shape) # make softmax over all nodes and actions in order to not sample the node uniform at random
+        else:
+            graph_x = torch.nn.functional.softmax(graph_x, dim=-1)
 
         return graph_x
 
     def value_function(self):
         assert hasattr(self, "intermediate_state"), "can not call value_function before forward"
-        return self.value_head(self.intermediate_state)
+        val = self.value_head1(self.intermediate_state)
+        val = torch.nn.functional.relu(val)
+        return self.value_head2(val)
 
 
 class GCN(TorchModelV2, torch.nn.Module):
